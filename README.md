@@ -5,21 +5,12 @@
 [![Python Version](https://img.shields.io/pypi/pyversions/nuclai.svg?color=green)](https://python.org)
 [![tests](https://github.com/dsethz/nuclai/workflows/tests/badge.svg)](https://github.com/dsethz/nuclai/actions)
 [![codecov](https://codecov.io/gh/dsethz/nuclai/branch/main/graph/badge.svg)](https://codecov.io/gh/dsethz/nuclai)
-[![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/nuclai)](https://napari-hub.org/plugins/nuclai)
 
 A software to identify the presence of cell surface markers based on nuclear signal.
 
 ----------------------------------
 
-This [napari] plugin was generated with [Cookiecutter] using [@napari]'s [cookiecutter-napari-plugin] template.
-
-<!--
-Don't miss the full getting started guide to set up your new package:
-https://github.com/napari/cookiecutter-napari-plugin#getting-started
-
-and review the napari docs for plugin developers:
-https://napari.org/stable/plugins/index.html
--->
+This repository was generated with [Cookiecutter] using [@napari]'s [cookiecutter-napari-plugin] template.
 
 ## Installation
 
@@ -61,7 +52,6 @@ If you encounter any problems, please [file an issue] along with a detailed desc
 
 [file an issue]: https://github.com/dsethz/nuclai/issues
 
-[napari]: https://github.com/napari/napari
 [tox]: https://tox.readthedocs.io/en/latest/
 [pip]: https://pypi.org/project/pip/
 [PyPI]: https://pypi.org/
