@@ -36,8 +36,6 @@ def train():
 
     * maybe we want a cli wrapper(see aisegcell) for this?
     """
-    test_string = "this is a very long string to test if ruff will auto line-break if we exceed 79 characters."
-    print(test_string)
 
 
 def test():
