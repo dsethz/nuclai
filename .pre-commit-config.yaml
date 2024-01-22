@@ -14,10 +14,6 @@ repos:
     rev: 23.12.1
     hooks:
       - id: black
-  - repo: https://github.com/tlambert03/napari-plugin-checks
-    rev: v0.3.0
-    hooks:
-      - id: napari-plugin-checks
   # https://mypy.readthedocs.io/en/stable/introduction.html
   # you may wish to add this as well!
   # - repo: https://github.com/pre-commit/mirrors-mypy
