@@ -6,19 +6,21 @@
 # PyTorch Version:      2.1.2                                                                                          #
 # Lightning Version:    2.1.3                                                                                          #
 ########################################################################################################################
-import numpy as np
-import argparse
+import ipdb
 import os
-import imageio.v2 as imageio
-from skimage import measure
+import argparse
 import pickle
 import difflib
-from scipy.spatial.distance import cdist
-from tqdm.auto import tqdm
-from histomicstk.features import compute_nuclei_features
-import pandas as pd
-import ipdb
+import glob
 
+import numpy as np
+import imageio.v2 as imageio
+import pandas as pd
+
+from histomicstk.features import compute_nuclei_features
+from scipy.spatial.distance import cdist
+from skimage import measure
+from tqdm.auto import tqdm
 
 
 def args_parse():
@@ -117,45 +119,6 @@ def get_avg_neigh_distance(coordinates: dict, n_nearest: int = 5) -> np.ndarray:
     return avg_neigh_dist, dist_matrix
 
 
-def load_filenames(image_directory: str, mask_directory: str, mask_coord_directory: str, filetype: str) -> tuple:
-    """
-    Finds all filenames in the input directories specified by the user.
-
-    Parameter
-    ------
-
-    image_directory: str
-        Filepath to the directory, where the image files can be found.
-
-    mask_directory: str
-        Filepath to the directory, where the mask files can be found.
-
-    mask_directory: str
-        Filepath to the directory, where the mask-coordinate.pkl files can be found.
-    
-    filetype: str
-        Filetype of the image-files or mask files e.g. \'.tif\'.
-
-    Returns:
-    ------
-
-    Returns tuple of three lists, holding the filenames found in image_directory, mask_directory and mask_coord_directory.
-    """
-    img_filenames = os.listdir(image_directory)
-    mask_filenames = os.listdir(mask_directory)
-    mask_coord_filenames= os.listdir(mask_coord_directory)
-
-    img_filenames = [img for img in img_filenames if img.endswith(filetype)]
-    mask_filenames = [mask for mask in mask_filenames if mask.endswith(filetype)]
-    mask_coord_filenames = [coord for coord in mask_coord_filenames if coord.endswith('.pkl') ]
-
-    assert (
-        len(img_filenames) == len(mask_filenames)
-        ), print(f'\n### ERROR: Expected number of image files and mask files to match. But found {len(img_filenames)} image files and {len(mask_filenames)} mask-files.')
-    
-    return img_filenames, mask_filenames, mask_coord_filenames
-
-
 def generate_features(img: np.ndarray, mask: dict, coordinates: np.ndarray) -> np.ndarray:
     """
     Wrapper that calls the individual feature generating functions and concatenates their output to a single feature vector for each individual segmentation mask. 
@@ -182,13 +145,15 @@ def generate_features(img: np.ndarray, mask: dict, coordinates: np.ndarray) -> n
     histomics_3d = np.full((len(coordinates.keys()), 88, img.shape[0]), np.nan)
     for z in tqdm(range(0, img.shape[0]), ncols=100, desc='\n### Computing HistomicsTK features'):
         if len(np.unique(mask[z, :, :])) > 1:
-            histomics_z = compute_nuclei_features(mask[z, :, :], img[z, :, :]).values
+            histomics_z = compute_nuclei_features(mask[z, :, :], img[z, :, :])
+
+            ipdb.set_trace()
+
             for row in range(0, histomics_z.shape[0]):
-                histomics_3d[int(histomics_z[row, 0] - 1), :, z] = histomics_z[row, :]
+                histomics_3d[int(histomics_z[row, 0] - 1), :, z] = histomics_z[row, :].values
         else:
             print(f'\n### No masks found in z-layer #{z}.')
     histomics_avg = np.nanmean(histomics_3d, axis=2)
-    
 
     # Alternative Regionprops feature in 3D
     regionprops_3d = np.full((len(coordinates.keys()), 16, img.shape[0]), np.nan)
@@ -208,8 +173,23 @@ def generate_features(img: np.ndarray, mask: dict, coordinates: np.ndarray) -> n
     regionprops_avg = np.nanmean(regionprops_3d, axis=2)
     feature_matrix[:, 0:88] = histomics_avg
     feature_matrix[:, 88:] = regionprops_avg
+    regionprop_names = ['axis_major_length',
+                        'euler_number',
+                        'inertia_tensor_0',
+                        'inertia_tensor_1',
+                        'inertia_tensor_2',
+                        'inertia_tensor_3',
+                        'inertia_tensor_4',
+                        'inertia_tensor_5',
+                        'inertia_tensor_6',
+                        'inertia_tensor_7',
+                        'inertia_tensor_eigvals_0',
+                        'inertia_tensor_eigvals_1',
+                        'inertia_tensor_eigvals_2'
+                        ]
+    feature_names = np.concatenate((histomics_z.columns.values, regionprop_names))
 
-    return feature_matrix
+    return pd.DataFrame(feature_matrix, columns=feature_names)
 
 
 def detect_common_name(img_name: str, mask_name: str, coord_name: str) -> str:
@@ -299,34 +279,6 @@ def bounding_box(coordinates: dict) -> dict:
     return bboxes
 
 
-def cutoffness_feature(img: np.ndarray, mask_inst: np.ndarray, bbox: list) -> float:
-    """
-    Calculates the variance of intensity values over the pixels on the perimeter of a nuclear mask.
-
-    Parameter
-    ------
-
-    img: np.ndarray
-        Image of shape ZYX. Expected to match shape of mask.
-
-    mask: np.ndarray
-        Mask array of shape ZYX. Contains only a single mask instance with entries = mask index and 0 otherwise. Expected to match shape of img.
-    
-    Returns:
-    ------
-
-    Scalar value of the variance for this respective mask. The value corresponds to the entire 3D-perimeter of the mask. 
-    """
-
-    pixel_values = []
-    for z_layer in range(bbox[0], (bbox[1]+1)):
-        contour_z = measure.find_contours(mask_inst[z_layer], 0, fully_connected='high')
-        for i in range(0, contour_z[0].shape[0]):
-            pixel_values.append( img[int(z_layer), int(contour_z[0][i, 0]), int(contour_z[0][i, 1])])
-    intensity_variance = np.var(pixel_values)
-    return intensity_variance
-
-
 def main():
 
     # Calls user parameters from CLI
@@ -336,9 +288,13 @@ def main():
     mask_coord_directory = args.mask_dict_path
     filetype = args.filetype
     out_dir = args.out_dir
+
+    os.makedirs(out_dir, exist_ok=True)
     
     # Detects all filenames in the user-specified input directories
-    img_filenames, mask_filenames, mask_coord_filenames = load_filenames(image_directory, mask_directory, mask_coord_directory, filetype)
+    img_filenames = glob.glob(os.path.join(image_directory, f'*{filetype}'))
+    mask_filenames = glob.glob(os.path.join(mask_directory, f'*{filetype}'))
+    mask_coord_filenames = glob.glob(os.path.join(mask_coord_directory, '*.pkl'))
 
     # Creates mask-coordinate .pkl files if missing and subsequently detects their names in the directory
     if len(mask_filenames) != len(mask_coord_filenames):
@@ -383,13 +339,10 @@ def main():
             coordinates = pickle.load(f)
         print(f'\n### Coordinates of {len(coordinates.keys())} masks loaded.')
 
-
-
-
         feature_matrix = generate_features(img, mask, coordinates)
-        csv_name = str(detect_common_name(img_name, mask_name, coord_name)) + '_feature_matrix_big.csv'
+        csv_name = f'{detect_common_name(img_name, mask_name, coord_name)}_feature_matrix_big.csv'
         final_outdir = os.path.join(out_dir, csv_name)
-        np.savetxt(final_outdir, feature_matrix, delimiter=',',)
+        feature_matrix.to_csv(final_outdir, index=False)
         print(f'\n### Created .csv-file for feature-matrix of image {img_name}.')
      
         # Generates and saves mask-centroid distance matrix
@@ -397,7 +350,7 @@ def main():
         avg_distances = get_avg_neigh_distance(coordinates)[0]
         dist_matrix = get_avg_neigh_distance(coordinates)[1]
         dist_matrix_dir = os.path.join(out_dir, str('dist_matrix_' + detect_common_name(img_name, mask_name, coord_name)))
-        np.savetxt(dist_matrix_dir, dist_matrix)
+        np.save(dist_matrix_dir, dist_matrix)
         print(f'\n### Saved the pairwise distance matrix between mask centroids for image \'{img_name}\'.')
         """
         
