@@ -187,28 +187,28 @@ def main():
         np.savetxt(final_outdir, feature_matrix, delimiter=',')
         print(f'\n### Created .csv-file for feature-matrix of image {img_name}.')
     
-    # save feature names
-    sklearn_feature_names = [
-        'axis_major_length',
-        'euler_number',
-        'inertia_tensor_1',
-        'inertia_tensor_2',
-        'inertia_tensor_3',
-        'inertia tensor_4',
-        'inertia_tensor_5',
-        'inertia_tensor_6',
-        'inertia_tensor_7',
-        'inertia_tensor_8',
-        'inertia_tensor_9',
-        'inertia_tensor_eigvals_1',
-        'inertia_tensor_eigvals_2',
-        'inertia_tensor_eigvals_3'
-        ]
-    
-    feature_names = histomics_names + sklearn_feature_names
-    feature_names = np.array(feature_names)
-    np.savetxt(os.path.join(out_dir, 'feature_names.csv'), feature_names, fmt='%s', delimiter=',')
-    print(f'\n### Feature names vector saved to {out_dir}.')
+        # save feature names
+        sklearn_feature_names = [
+            'axis_major_length',
+            'euler_number',
+            'inertia_tensor_1',
+            'inertia_tensor_2',
+            'inertia_tensor_3',
+            'inertia tensor_4',
+            'inertia_tensor_5',
+            'inertia_tensor_6',
+            'inertia_tensor_7',
+            'inertia_tensor_8',
+            'inertia_tensor_9',
+            'inertia_tensor_eigvals_1',
+            'inertia_tensor_eigvals_2',
+            'inertia_tensor_eigvals_3'
+            ]
+        
+        feature_names = histomics_names + sklearn_feature_names
+        feature_names = np.array(feature_names)
+        np.savetxt(os.path.join(out_dir, 'feature_names.csv'), feature_names, fmt='%s', delimiter=',')
+        print(f'\n### Feature names vector saved to {out_dir}.')
         
 if __name__ == '__main__':
     main()
