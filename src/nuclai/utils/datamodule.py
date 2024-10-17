@@ -1,39 +1,39 @@
 ########################################################################################################################
-# This script handels the loading and processing of the input dataset for cell classification with a CNN.              #
-# Author:               Lukas Radtke, Daniel Schirmacher                                                               #
+# Contains the data set classes for nucleus representation learning and classification with a CNN.                     #
+# Author:               Daniel Schirmacher                                                                             #
 #                       Cell Systems Dynamics Group, D-BSSE, ETH Zurich                                                #
-# Python Version:       3.11.7                                                                                         #
-# PyTorch Version:      2.1.2                                                                                          #
-# Lightning Version:    2.1.3                                                                                          #
+# Python Version:       3.12.7                                                                                         #
+# PyTorch Version:      2.4.1                                                                                          #
+# Lightning Version:    2.4.0                                                                                          #
 ########################################################################################################################
 import pathlib
-import random
 from os import path
-from typing import BinaryIO, List, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
-import matplotlib.pyplot as plt
 import numpy as np
 import torchvision
 import pandas as pd
-import pytorch_lightning as pl
+import lightning as L
 import torch
-import math
-from PIL import Image
 from skimage import io
-from skimage.util import img_as_ubyte
 from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms
-from torchvision.utils import make_grid
+from monai import transforms
 
 
-class Datasets:
+class DataSet:
+    """
+    Dataset class for nucleus representation learning and classification with a CNN.
 
+    Args:
+        path_data: path to CSV file containing image paths and header "image".
+        trans: Compose of transforms to apply to each image.
+        shape: shape of the input image.
+        bit_depth: bit depth of the input image.
+    """
     def __init__(
         self, 
         path_data: Union[str, pathlib.PosixPath, pathlib.WindowsPath],
-        transform_both: Optional[transforms.transforms.Compose] = None,
-        transform_img: Optional[transforms.transforms.Compose] = None,
-        transform_mask: Optional[transforms.transforms.Compose] = None,
+        trans: Optional[transforms.Compose] = None,
         shape: Tuple[int, int] = (30, 300, 300),
         bit_depth: int = 8,
     ):
@@ -52,20 +52,10 @@ class Datasets:
         ), f'path_data does not exist, you typed: "{path_data}".'
 
         # transformation
-        if transform_both is not None:
+        if trans is not None:
             assert (
-                type(transform_both) == transforms.transforms.Compose
-            ), f'transform_both should be of type "torchvision.transforms.transforms.Compose" but is of type "{type(transform_both)}".'
-
-        if transform_img is not None:
-            assert (
-                type(transform_img) == transforms.transforms.Compose
-            ), f'transform_img should be of type "torchvision.transforms.transforms.Compose" but is of type "{type(transform_img)}".'
-
-        if transform_mask is not None:
-            assert (
-                type(transform_mask) == transforms.transforms.Compose
-            ), f'transform_mask should be of type "torchvision.transforms.transforms.Compose" but is of type "{type(transform_mask)}".'
+                type(trans) == transforms.Compose
+            ), f'trans should be of type "torchvision.transforms.Compose" but is of type "{type(trans)}".'
 
         # assert shape
         assert (
@@ -83,14 +73,10 @@ class Datasets:
         self.path_data = path_data
         self.data = pd.read_csv(path_data)
         self.shape = shape
-        self.transform_both = transform_both
-        self.transform_img = transform_img
-        self.transform_mask = transform_mask
-        self._padder = transforms.RandomCrop(self.shape, pad_if_needed=True)
+        self.trans = trans
+        self._padder = transforms.SpatialPad(self.shape)
 
-        assert all(
-            col in self.data.columns for col in ("DAPI", "mask", "label_1")
-        ), 'The input file requires ("DAPI", "mask", "label_1") as headers.'
+        assert 'image' in self.data.columns, 'The input file requires "image" as header.'
 
         if bit_depth == 8:
             self.bit_depth = np.uint8
@@ -103,157 +89,104 @@ class Datasets:
             )
         
 
-        def __len__(self):
-            return len(self.data)
+    def __len__(self):
+        return len(self.data)
         
 
-        def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, int]: 
-            """
-            read data (csv file)
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, int]: 
+        """
+        read data (csv file)
 
-            Parameters
-            ----------
-            idx : int
-                index to image.
+        Parameters
+        ----------
+        idx : int
+            index to image.
 
-            Returns
-            -------
-            image : torch.tensor
-                preprocessed image.
-            mask : torch.tensor
-                preprocessed mask.
-            idx : int
-                index to image.
+        Returns
+        -------
+        image : torch.tensor
+            preprocessed image.
+        idx : int
+            index to image.
 
-            """
-            image_path = self.data.loc[idx, 'DAPI']
-            image = io.imread(image_path, as_gray=True)
-            image = img_as_ubyte(image) #int byte [0, 255]
+        """
+        img_path = self.data.loc[idx, 'image']
+        img = io.imread(img_path)
 
-            mask_path = self.data.loc[idx, 'mask']
-            mask = io.imread(mask_path, as_gray=True)
-            mask = np.array(mask) #circumvent read only arrays
-            mask[mask > 0] = 255
-            mask = mask.astype(np.uint8)
+        img = self._preprocess(img)
 
-            label = self.data.loc[idx, 'label_1']
-            label = label.astype(np.float)
-
-            image, mask = self._preprocess(image, mask)
-
-            return image, mask, label, idx
+        return img, idx
 
 
-
-        def _preprocess(self, image: np.array, mask: np.array) -> torch.Tensor:
-            """
-            Normalise, augment and transform image and mask
-
-
-            Parameters
-            ----------
-            image : np.array
-                input images (z, y, x).
-            mask : np.array
-                input masks (z, y, x).
-
-            Returns
-            -------
-            image_trans : torch.tensor
-                transformed image (channel, height, width).
-            mask_trans : torch.tensor
-                transformed mask (channel, height, width).
-
-            """
-
-            assert (
-            len(image.shape) == 3
-            ), f'images are expected to be grayscale and len(image.shape)==3, here it is: "{len(image.shape)}".'
-            assert (
-            len(mask.shape) == 3
-            ), f'masks are expected to be grayscale and len(mask.shape)==3, here it is: "{len(mask.shape)}".'
-
-            image = image.astype(self.bit_depth)
-
-            image_trans = torch.from_numpy(image).type(torch.FloatTensor)
-            mask_trans = torch.from_numpy(mask).type(torch.FloatTensor)
-
-            # apply self.transform_img
-            if self.transform_image is not None:
-                image_trans = self.transform_image(image_trans)
-
-            # apply self.transform_mask
-            if self.transform_mask is not None:
-                mask_trans = self.transform_mask(mask_trans)
-
-            # to apply the same augmentations on mask and image first merge them
-            if self.transform_both is not None:
-                _, depth, height, width = image_trans.size()
-                merged = torch.zeros(2, depth, height, width)
-                merged[0, :, :, :] = image_trans
-                merged[1, :, :, :] = mask_trans
-
-                merged_trans = self._padder(merged)
-                merged_trans = self.transform_both(merged_trans)
-
-                image_trans = merged_trans[0, :, :, :]
-                image_trans = image_trans[None, :, :] #is that to drop dimension 1 ?
-
-                mask_trans = merged_trans[1, :, :, :]
-                mask_trans = mask_trans[None, :, :, :]
-
-            # merge them for all cases
-            image_mask = torch.zeros(2, depth, height, width)
-            image_mask[0, :, :, :] = image_trans
-            image_mask[1, :, :, :] = mask_trans
- 
-            return image_trans
+    def _preprocess(self, img: np.array) -> torch.Tensor:
+        """
+        Normalise, augment and transform image.
 
 
+        Parameters
+        ----------
+        img : np.array
+            input image (z, y, x).
+
+        Returns
+        -------
+        img_trans : torch.tensor
+            transformed img (channel, depth, height, width).
+
+        """
+
+        assert (
+        len(img.shape) == 3
+        ), f'images are expected to be grayscale and len(img.shape)==3, here it is: "{len(img.shape)}".'
+
+        img = img.astype(self.bit_depth)
+
+        img_t = torch.from_numpy(img).type(torch.FloatTensor)
+        img_t = torch.unsqueeze(img_t, 0)
+        img_t = self._padder(img_t)
+
+        # apply transforms
+        if self.trans is not None:
+            img_t = self.trans(img_t)
+
+        return img_t
 
 
-
-
-
-class Datamodule(pl.LightningDataModule):
+class DataModule(L.LightningDataModule):
     """""
-    Pytorch lightning class which encapsulates the data preprocess and loading steps
-    """""
+    Pytorch lightning class which encapsulates DataSet.
 
+    Args:
+        path_data: path to CSV file containing image paths and header "image". Required for training/testing/predicting.
+        path_data_val: path to CSV file containing image paths and header "image". Only required for training.
+        batch_size: batch size for training.
+        shape: shape of the input image.
+    """""
     def __init__(
         self,
         path_data: Union[str, pathlib.PosixPath, pathlib.WindowsPath],
-        path_data_val: Union[str, pathlib.PosixPath, pathlib.WindowsPath],
-        path_data_test: Optional[
+        path_data_val: Optional[
             Union[str, pathlib.PosixPath, pathlib.WindowsPath]
-        ] = None,
-        path_data_predict: Optional[
-            Union[str, pathlib.PosixPath, pathlib.WindowsPath] 
         ] = None,
         batch_size: int = 2,
         shape: Tuple[int, int, int] = (30, 300, 300),
-        transform_intensity: bool = False
     ):
-        
         super().__init__()  #initializes any attributes from the parent class
 
         self.path_data = path_data
         self.path_data_val = path_data_val
-        self.path_data_test = path_data_test
-        self.path_data_predict = path_data_predict
         self.batch_size = batch_size
         self.shape = shape
-        self.transform_intensity = transform_intensity
 
-    def setup(self):
+
+    def setup(self, stage: Optional[str] = None):
         """
         Instantiate datasets
         """
 
         # catch image data type
         tmp = pd.read_csv(self.path_data)
-        img = io.imread(tmp.DAPI[0])
-        img = img_as_ubyte(img)
+        img = io.imread(tmp.loc[0, 'image'])
 
         if img.dtype == np.uint8:
             max_intensity = 255.0
@@ -269,122 +202,78 @@ class Datamodule(pl.LightningDataModule):
             )
 
         if stage == "fit" or stage is None:
-            transform_both = transforms.Compose(
+            assert self.path_data_val is not None, "path_data_val is missing."
+
+            # instantiate transforms and datasetst
+            trans = transforms.Compose(
                 [
-                    transforms.RandomHorizontalFlip(),
-                    transforms.RandomRotation(45),
+                    transforms.NormalizeIntensity(subtrahend=0, divisor=max_intensity),
                 ]
             )
 
-            transform_mask = transforms.Compose(
-                [
-                    transforms.Normalize(0.0, 255.0),
-                ]
-            )
-
-            if self.transform_intensity:
-                transform_img = transforms.Compose(
-                    [
-                        transforms.Normalize(0.0, max_intensity),
-                        transforms.ColorJitter(
-                            brightness=0.7,
-                            contrast=0.5,
-                            saturation=0.5,
-                            hue=0.5,
-                        ),
-                        transforms.GaussianBlur(kernel_size=5),
-                        transforms.RandomAdjustSharpness(4, p=0.5),
-                    ]
-                )
-            else:
-                transform_img = transforms.Compose(
-                    [
-                        transforms.Normalize(0.0, max_intensity),
-                    ]
-                )
-
-            self.data = Dataset(
+            self.data = DataSet(
                 self.path_data,
-                transform_both=transform_both,
-                transform_img=transform_img,
-                transform_mask=transform_mask,
+                trans=trans,
                 shape=self.shape,
                 bit_depth=bit_depth,
             )
-            self.data_val = Dataset(
+            self.data_val = DataSet(
                 self.path_data_val,
-                transform_both=transform_both,
-                transform_img=transform_img,
-                transform_mask=transform_mask,
+                trans=trans,
                 shape=self.shape,
                 bit_depth=bit_depth,
             )
 
         if stage == "test" or stage is None:
-            transform_mask = transforms.Compose(
+            # instantiate transforms and datasets
+            trans = transforms.Compose(
                 [
-                    transforms.Normalize(0.0, 255.0),
-                ]
-            )
-            transform_img = transforms.Compose(
-                [
-                    transforms.Normalize(0.0, max_intensity),
+                    transforms.NormalizeIntensity(subtrahend=0, divisor=max_intensity),
                 ]
             )
 
-            if self.path_data_test is not None:
-                self.data_test = Dataset_test(
-                    self.path_data_test,
-                    transform_img=transform_img,
-                    transform_mask=transform_mask,
-                    bit_depth=bit_depth,
-                )
-            else:
-                raise ValueError("path_data_test is missing")
+            self.data_test = DataSet(
+                self.path_data,
+                trans=trans,
+                shape=self.shape,
+                bit_depth=bit_depth,
+            )
 
         if stage == "predict" or stage is None:
-            transform_img = transforms.Compose(
+            # instantiate transforms and datasets
+            trans = transforms.Compose(
                 [
-                    transforms.Normalize(0.0, max_intensity),
+                    transforms.NormalizeIntensity(subtrahend=0, divisor=max_intensity),
                 ]
             )
 
-            if self.path_data_predict is not None:
-                self.data_predict = Dataset_predict(
-                    self.path_data_predict,
-                    transform_img=transform_img,
-                    bit_depth=bit_depth,
-                )
-            else:
-                raise ValueError("path_data_predict is missing")
+            self.data_predict = DataSet(
+                self.path_data,
+                trans=trans,
+                shape=self.shape,
+                bit_depth=bit_depth,
+            )
             
+
     def train_dataloader(self):
         return DataLoader(
             self.data, batch_size=self.batch_size, shuffle=True, num_workers=4
         )
+
 
     def val_dataloader(self):
         return DataLoader(
             self.data_val, batch_size=self.batch_size, num_workers=4
         )
 
+
     def test_dataloader(self):
         return DataLoader(
             self.data_test, batch_size=self.batch_size, num_workers=4
         )
 
+
     def predict_dataloader(self):
         return DataLoader(
             self.data_predict, batch_size=self.batch_size, num_workers=0
         )
-
-
-if __name__=='__main__':
-    setup()
-
-
-
-
-
-
-
