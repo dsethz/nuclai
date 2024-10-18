@@ -9,6 +9,10 @@
 # Imports
 import argparse
 import os
+import random
+import ipdb
+
+import lightning as L
 
 from datetime import date
 from generative.networks.nets import VQVAE
@@ -179,7 +183,7 @@ def train():
 
     assert model_type in ["vqvae"], f"Model type {model_type} is not supported."
 
-    assert os.path.isfile(path_checkpoint) or path_checkpoint is None, f"File {path_checkpoint} does not exist."
+    assert path_checkpoint is None or os.path.isfile(path_checkpoint), f"File {path_checkpoint} does not exist."
 
     assert type(epochs) == int and epochs > 0, f"Epochs must be a positive integer."
 
@@ -187,7 +191,7 @@ def train():
 
     assert type(lr) == float and lr > 0, f"Learning rate must be a positive float."
 
-    assert type(shape) == list and len(shape) == 3, f"Shape must be a list of two integers."
+    assert type(shape) == list and len(shape) == 3, f"Shape must be a list of 3 integers."
 
     assert type(log_frequency) == int and log_frequency > 0, f"Log frequency must be a positive integer."
 
@@ -261,12 +265,17 @@ def train():
             path_data=path_data,
             path_data_val=path_data_val,
             batch_size=batch_size,
-            shape=shape,
+            shape=tuple(shape),
         )
+
+    ipdb.set_trace()
 
     # random seeding
     if seed is not None:
-        pl.seed_everything(seed)
+        L.pytorch.seed_everything(seed, workers=True)
+
+    # set up model
+
 
 def test():
     """
