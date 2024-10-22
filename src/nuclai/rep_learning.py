@@ -87,7 +87,9 @@ def _get_args(mode: str) -> argparse.Namespace:
             type=int,
             nargs="+",
             default=[32, 200, 200],
-            help="Shape [depth, heigth, width] that all images will be cropped/padded to before model submission. Along all axes shape % 2**len(downsample_parameters) == 0 MUST hold. Default is [32, 200, 200].",
+            help="Shape [depth, heigth, width] that all images will be cropped/padded to "
+            "before model submission. Along all axes shape evenly divisible "
+            "by 2**len(downsample_parameters) MUST hold. Default is [32, 200, 200].",
         )
 
         parser.add_argument(
@@ -363,9 +365,13 @@ def test():
     """
     This function coordinates model testing.
     """
+    # get input arguments
+    # args = _get_args(mode="test")
 
 
 def predict():
     """
     This function coordinates model prediction.
     """
+    # get input arguments
+    # args = _get_args(mode="predict")

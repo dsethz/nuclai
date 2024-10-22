@@ -254,20 +254,18 @@ class LitVQVAE(L.LightningModule):
             sync_dist=False,
         )
 
-        # save inferred masks
-        # for img, i in zip(imgs_recon, ids):
+        # save reconstructions
+        # for img, i in zip(imgs_recon, ids, strict=False):
         #     if "out" in self.trainer.datamodule.data_test.data.columns:
-        #         path_img = self.trainer.datamodule.data_test.data.out[
-        #             i.item()
-        #         ]
+        #         path_img = self.trainer.datamodule.data_test.data.out[i.item()]
         #     else:
-        #         path_img = os.path.basename(self.trainer.datamodule.data_test.data.image[i.item()])
-        #         path_img = path_img.split('.')
+        #         path_img = os.path.basename(
+        #             self.trainer.datamodule.data_test.data.image[i.item()]
+        #         )
+        #         path_img = path_img.split(".")
         #         path_img[0] = path_img[0] + self.suffix
         #         path_img = ".".join(path_img)
-        #         path_img = os.path.join(
-        #             self.dir_out, path_img
-        #         )
+        #         path_img = os.path.join(self.dir_out, path_img)
         #     # TODO: check if I need this or if I just use io.imsave
         #     save_image_mod(img, path_img, nrow=1, padding=0)
 
