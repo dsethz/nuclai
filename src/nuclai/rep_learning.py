@@ -10,12 +10,15 @@
 import argparse
 import os
 import random
-import ipdb
+import re
+from datetime import date
 
 import lightning as L
+from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.loggers import CSVLogger
 
-from datetime import date
-from generative.networks.nets import VQVAE
+from nuclai.models.vqvae import LitVQVAE
+from nuclai.utils.callbacks import CheckpointCallback
 from nuclai.utils.datamodule import DataModule
 
 
@@ -29,7 +32,7 @@ def _get_args(mode: str) -> argparse.Namespace:
     # get user input
     parser = argparse.ArgumentParser()
 
-    if mode == 'train':
+    if mode == "train":
         parser.add_argument(
             "--data",
             type=str,
@@ -83,8 +86,8 @@ def _get_args(mode: str) -> argparse.Namespace:
             "--shape",
             type=int,
             nargs="+",
-            default=[32, 160, 170],
-            help="Shape [depth, heigth, width] that all images will be cropped/padded to before model submission. Default is [32, 160, 170].",
+            default=[32, 200, 200],
+            help="Shape [depth, heigth, width] that all images will be cropped/padded to before model submission. Along all axes shape % 2**len(downsample_parameters) == 0 MUST hold. Default is [32, 200, 200].",
         )
 
         parser.add_argument(
@@ -114,7 +117,7 @@ def _get_args(mode: str) -> argparse.Namespace:
             help="None or Int to use for random seeding. Default is None.",
         )
 
-    elif mode in ['test', 'predict']:
+    elif mode in ["test", "predict"]:
         parser.add_argument(
             "--data",
             type=str,
@@ -159,7 +162,7 @@ def train():
     This function coordinates model training.
     """
     # get input arguments
-    args = _get_args(mode='train')
+    args = _get_args(mode="train")
 
     path_data = args.data
     path_data_val = args.data_val
@@ -179,29 +182,51 @@ def train():
     # check input arguments
     assert os.path.isfile(path_data), f"File {path_data} does not exist."
 
-    assert os.path.isfile(path_data_val), f"File {path_data_val} does not exist."
+    assert os.path.isfile(
+        path_data_val
+    ), f"File {path_data_val} does not exist."
 
-    assert model_type in ["vqvae"], f"Model type {model_type} is not supported."
+    assert model_type in [
+        "vqvae"
+    ], f"Model type {model_type} is not supported."
 
-    assert path_checkpoint is None or os.path.isfile(path_checkpoint), f"File {path_checkpoint} does not exist."
+    assert path_checkpoint is None or os.path.isfile(
+        path_checkpoint
+    ), f"File {path_checkpoint} does not exist."
 
-    assert type(epochs) == int and epochs > 0, f"Epochs must be a positive integer."
+    assert (
+        isinstance(epochs, int) and epochs > 0
+    ), "Epochs must be a positive integer."
 
-    assert type(batch_size) == int and batch_size > 0, f"Batch size must be a positive integer."
+    assert (
+        isinstance(batch_size, int) and batch_size > 0
+    ), "Batch size must be a positive integer."
 
-    assert type(lr) == float and lr > 0, f"Learning rate must be a positive float."
+    assert (
+        isinstance(lr, float) and lr > 0
+    ), "Learning rate must be a positive float."
 
-    assert type(shape) == list and len(shape) == 3, f"Shape must be a list of 3 integers."
+    assert (
+        isinstance(shape, list) and len(shape) == 3
+    ), "Shape must be a list of 3 integers."
 
-    assert type(log_frequency) == int and log_frequency > 0, f"Log frequency must be a positive integer."
+    assert (
+        isinstance(log_frequency, int) and log_frequency > 0
+    ), "Log frequency must be a positive integer."
 
-    assert type(multiprocessing) == bool, f"Multiprocessing must be a boolean."
+    assert isinstance(
+        multiprocessing, bool
+    ), "Multiprocessing must be a boolean."
 
-    assert type(retrain) == bool, f"Retrain must be a boolean."
+    assert isinstance(retrain, bool), "Retrain must be a boolean."
 
-    assert seed is None or (type(seed) == int and seed > 0), f"Seed must be None or a positive integer."
+    assert seed is None or (
+        isinstance(seed, int) and seed > 0
+    ), "Seed must be None or a positive integer."
 
-    assert type(output_base_dir) == str, f"Output base directory must be a string."
+    assert isinstance(
+        output_base_dir, str
+    ), "Output base directory must be a string."
 
     # create directories
     d = date.today()
@@ -232,14 +257,11 @@ def train():
 
     if "cpu" in devices:
         accelerator = "cpu"
-        gpus = None
-        strategy = None
-        sync_batchnorm = False
-        num_processes = 1
+        strategy = "auto"
+        n_devices = 1
     else:
         accelerator = "gpu"
-        gpus = [int(device) for device in devices]
-        num_processes = len(gpus)
+        n_devices = len([int(device) for device in devices])
 
     # assert correct setup for multiprocessing
     if multiprocessing:
@@ -247,45 +269,103 @@ def train():
             accelerator == "gpu"
         ), "multiprocessing is only enabled for GPU devices."
         assert (
-            len(gpus) > 1
-        ), f"multiprocessing requires >1 devices, but {len(gpus)} devices are provided."
+            n_devices > 1
+        ), f"multiprocessing requires >1 devices, but {n_devices} devices are provided."
 
-        # NOTE: currently only single node training supported (else -> batch_size / (ngpus * nnodes))
-        batch_size = int(batch_size / len(gpus))
-        # sync_batchnorm = True not needed for VQVAE as it uses layer_norm
+        batch_size = int(batch_size / n_devices)
         strategy = "ddp"
     elif accelerator == "gpu":
-        gpus = 1
-        strategy = None
-        num_processes = 1
-        # sync_batchnorm = False not needed for VQVAE as it uses layer_norm
-    
+        strategy = "auto"
+        n_devices = 1
+
     # set up data
     data_module = DataModule(
-            path_data=path_data,
-            path_data_val=path_data_val,
-            batch_size=batch_size,
-            shape=tuple(shape),
-        )
-
-    ipdb.set_trace()
+        path_data=path_data,
+        path_data_val=path_data_val,
+        batch_size=batch_size,
+        shape=tuple(shape),
+    )
 
     # random seeding
     if seed is not None:
         L.pytorch.seed_everything(seed, workers=True)
+        deterministic = True
+    else:
+        deterministic = False
 
     # set up model
+    if model_type == "vqvae":
+        model = LitVQVAE(
+            spatial_dims=3,
+            in_channels=1,
+            out_channels=1,
+            num_channels=(256, 256),
+            num_res_channels=256,
+            num_res_layers=2,
+            downsample_parameters=((2, 4, 1, 1), (2, 4, 1, 1)),
+            upsample_parameters=((2, 4, 1, 1, 0), (2, 4, 1, 1, 0)),
+            num_embeddings=256,
+            embedding_dim=32,
+            embedding_init="normal",
+            commitment_cost=0.25,
+            decay=0.5,
+            epsilon=1e-5,
+            dropout=0.0,
+            ddp_sync=True,
+            use_checkpointing=False,
+            learning_rate=lr,
+            suffix="",
+        )
+    else:
+        raise ValueError(f"Model type {model_type} is not supported.")
+
+    # set up callback for best model
+    checkpoint_best_loss = ModelCheckpoint(
+        monitor="loss_val",
+        filename="best-loss-{epoch}-{step}",
+        mode="min",
+    )
+
+    checkpoint_latest = ModelCheckpoint(
+        monitor=None,
+        filename="latest-{epoch}-{step}",
+        mode="max",
+        save_top_k=1,
+    )
+
+    # update max_epoch when loading from checkpoint
+    if path_checkpoint is not None:
+        epoch_pattern = re.compile(r"epoch=([0-9]+)")
+        old_epoch = int(epoch_pattern.search(path_checkpoint)[1])
+        epochs += old_epoch
+
+    # train model
+    logger = CSVLogger(output_base_dir, name="lightning_logs")
+    trainer = L.Trainer(
+        max_epochs=epochs,
+        default_root_dir=output_base_dir,
+        accelerator=accelerator,
+        strategy=strategy,
+        devices=n_devices,
+        logger=logger,
+        callbacks=[
+            checkpoint_best_loss,
+            checkpoint_latest,
+            CheckpointCallback(retrain=retrain),
+        ],
+        log_every_n_steps=log_frequency,
+        deterministic=deterministic,
+    )
+    trainer.fit(model, data_module, ckpt_path=path_checkpoint)
 
 
 def test():
     """
     This function coordinates model testing.
     """
-    pass
 
 
 def predict():
     """
     This function coordinates model prediction.
     """
-    pass

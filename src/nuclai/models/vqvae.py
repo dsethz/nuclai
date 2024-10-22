@@ -7,13 +7,12 @@
 # Lightning Version:    2.4.0                                                                                          #
 ########################################################################################################################
 # Imports
-import torch
+import os
 
 import lightning as L
-
+import torch
 from generative.networks.nets import VQVAE
 from monai.networks.layers import Act
-from torch import nn
 from torch.nn import functional as F
 
 
@@ -112,8 +111,9 @@ class LitVQVAE(L.LightningModule):
         assert isinstance(
             embedding_dim, int
         ), f'embedding_dim is expected to be of type "int" but is of type "{type(embedding_dim)}".'
-        assert (
-            embedding_init in ("normal", "kaiming_uniform")
+        assert embedding_init in (
+            "normal",
+            "kaiming_uniform",
         ), f'embedding_init is expected to be of type "str" but is of type "{type(embedding_init)}".'
         assert isinstance(
             commitment_cost, float
@@ -128,7 +128,7 @@ class LitVQVAE(L.LightningModule):
             dropout, float
         ), f'dropout is expected to be of type "float" but is of type "{type(dropout)}".'
         assert isinstance(
-                ddp_sync, bool
+            ddp_sync, bool
         ), f'ddp_sync is expected to be of type "bool" but is of type "{type(ddp_sync)}".'
         assert isinstance(
             use_checkpointing, bool
@@ -141,16 +141,20 @@ class LitVQVAE(L.LightningModule):
         ), f'suffix is expected to be of type "str" but is of type "{type(suffix)}".'
 
         # additional assertions
-        assert len(num_channels) == len(downsample_parameters) == len(upsample_parameters), (
+        assert (
+            len(num_channels)
+            == len(downsample_parameters)
+            == len(upsample_parameters)
+        ), (
             f"Length of num_channels ({len(num_channels)}), downsample_parameters ({len(downsample_parameters)}) "
             f"and upsample_parameters ({len(upsample_parameters)}) must match."
         )
-        assert all(len(x) == 4 for x in downsample_parameters), (
-            f"Each element in downsample_parameters must have length 4, but has length {len(x)}."
-        )
-        assert all(len(x) == 5 for x in upsample_parameters), (
-            f"Each element in upsample_parameters must have length 5, but has length {len(x)}."
-        )
+        assert all(
+            len(x) == 4 for x in downsample_parameters
+        ), "Each element in downsample_parameters must have length 4."
+        assert all(
+            len(x) == 5 for x in upsample_parameters
+        ), "Each element in upsample_parameters must have length 5."
 
         # set up the VQVAE model
         self.model_class = "VQVAE"
@@ -158,7 +162,9 @@ class LitVQVAE(L.LightningModule):
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.num_channels = num_channels
-        self.num_res_channels = (num_res_channels for _ in range(len(num_channels)))
+        self.num_res_channels = tuple(
+            num_res_channels for _ in range(len(num_channels))
+        )
         self.num_res_layers = num_res_layers
         self.downsample_parameters = downsample_parameters
         self.upsample_parameters = upsample_parameters
@@ -196,10 +202,10 @@ class LitVQVAE(L.LightningModule):
             output_act=self.output_act,
             ddp_sync=self.ddp_sync,
             use_checkpointing=self.use_checkpointing,
-            )
+        )
 
     def training_step(
-        self, batch: List[torch.Tensor], batch_idx: int
+        self, batch: list[torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
         imgs, ids = batch
 
@@ -210,10 +216,15 @@ class LitVQVAE(L.LightningModule):
 
         self.log("loss", loss, on_step=True, on_epoch=True, sync_dist=True)
 
-        return {"loss": loss, "imgs_recon": imgs_recon.detach(), "imgs": imgs, "ids": ids}
+        return {
+            "loss": loss,
+            "imgs_recon": imgs_recon.detach(),
+            "imgs": imgs,
+            "ids": ids,
+        }
 
     def validation_step(
-        self, batch: List[torch.Tensor], batch_idx: int
+        self, batch: list[torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
         imgs, ids = batch
 
@@ -226,7 +237,7 @@ class LitVQVAE(L.LightningModule):
         return loss
 
     def test_step(
-        self, batch: List[torch.Tensor], batch_idx: int
+        self, batch: list[torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
         imgs, ids = batch
 
@@ -244,65 +255,69 @@ class LitVQVAE(L.LightningModule):
         )
 
         # save inferred masks
-        for img, i in zip(imgs_recon, ids):
-            if "out" in self.trainer.datamodule.data_test.data.columns:
-                path_img = self.trainer.datamodule.data_test.data.out[
-                    i.item()
-                ]
-            else:
-                path_img = os.path.basename(self.trainer.datamodule.data_test.data.image[i.item()])
-                path_img = path_img.split('.')
-                path_img[0] = path_img[0] + self.suffix
-                path_img = ".".join(path_img)
-                path_img = os.path.join(
-                    self.dir_out, path_img
-                )
-            # TODO: check if I need this or if I just use io.imsave
-            save_image_mod(img, path_img, nrow=1, padding=0)
+        # for img, i in zip(imgs_recon, ids):
+        #     if "out" in self.trainer.datamodule.data_test.data.columns:
+        #         path_img = self.trainer.datamodule.data_test.data.out[
+        #             i.item()
+        #         ]
+        #     else:
+        #         path_img = os.path.basename(self.trainer.datamodule.data_test.data.image[i.item()])
+        #         path_img = path_img.split('.')
+        #         path_img[0] = path_img[0] + self.suffix
+        #         path_img = ".".join(path_img)
+        #         path_img = os.path.join(
+        #             self.dir_out, path_img
+        #         )
+        #     # TODO: check if I need this or if I just use io.imsave
+        #     save_image_mod(img, path_img, nrow=1, padding=0)
 
         # TODO: add step where we save embeddings using https://github.com/Project-MONAI/GenerativeModels/blob/main/generative/networks/nets/vqvae.py#L445
 
-        return loss_test
+        return loss
 
     def predict_step(
-        self, batch: List[torch.Tensor], batch_idx: int
+        self, batch: list[torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
         imgs, ids = batch
 
         imgs_recon, _ = self.net(imgs)
 
         # save inferred masks
-        for img, i in zip(imgs_recon, ids):
-            if "out" in self.trainer.datamodule.data_predict.data.columns:
-                path_img = self.trainer.datamodule.data_predict.data.out[
-                    i.item()
-                ]
-            else:
-                path_img = os.path.basename(self.trainer.datamodule.data_predict.data.image[i.item()])
-                path_img = path_img.split('.')
-                path_img[0] = path_img[0] + self.suffix
-                path_img = ".".join(path_img)
-                path_img = os.path.join(
-                    self.dir_out, path_img
-                )
-            # TODO: check if I need this or if I just use io.imsave
-            save_image_mod(img, path_img, nrow=1, padding=0)
+        # for img, i in zip(imgs_recon, ids):
+        #     if "out" in self.trainer.datamodule.data_predict.data.columns:
+        #         path_img = self.trainer.datamodule.data_predict.data.out[
+        #             i.item()
+        #         ]
+        #     else:
+        #         path_img = os.path.basename(self.trainer.datamodule.data_predict.data.image[i.item()])
+        #         path_img = path_img.split('.')
+        #         path_img[0] = path_img[0] + self.suffix
+        #         path_img = ".".join(path_img)
+        #         path_img = os.path.join(
+        #             self.dir_out, path_img
+        #         )
+        #     # TODO: check if I need this or if I just use io.imsave
+        #     save_image_mod(img, path_img, nrow=1, padding=0)
 
         # TODO: add step where we save embeddings using https://github.com/Project-MONAI/GenerativeModels/blob/main/generative/networks/nets/vqvae.py#L445
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
         return optimizer
 
     def on_test_start(self):
-        self.dir_out = os.path.join(self.trainer.logger.log_dir, "reconstructions")
+        self.dir_out = os.path.join(
+            self.trainer.logger.log_dir, "reconstructions"
+        )
         os.makedirs(
             self.dir_out,
             exist_ok=True,
         )
 
     def on_predict_start(self):
-        self.dir_out = os.path.join(self.trainer.logger.log_dir, "reconstructions")
+        self.dir_out = os.path.join(
+            self.trainer.logger.log_dir, "reconstructions"
+        )
         os.makedirs(
             self.dir_out,
             exist_ok=True,
@@ -311,10 +326,7 @@ class LitVQVAE(L.LightningModule):
     def on_save_checkpoint(self, checkpoint) -> None:
         # save input variables which are not in the __init__function on checkpoints
         print("\non_save_checkpoint hook works!!!!\n")
-        pass
 
     def on_load_checkpoint(self, checkpoint) -> None:
         # load input variables which are not in the __init__function on checkpoints
         print("\non_load_checkpoint hook works!!!!\n")
-        pass
-
