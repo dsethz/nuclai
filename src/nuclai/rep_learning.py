@@ -291,9 +291,6 @@ def train():
     # random seeding
     if seed is not None:
         L.pytorch.seed_everything(seed, workers=True)
-        deterministic = True
-    else:
-        deterministic = False
 
     # set up model
     if model_type == "vqvae":
@@ -356,7 +353,6 @@ def train():
             CheckpointCallback(retrain=retrain),
         ],
         log_every_n_steps=log_frequency,
-        deterministic=deterministic,
     )
     trainer.fit(model, data_module, ckpt_path=path_checkpoint)
 
