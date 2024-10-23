@@ -8,16 +8,15 @@
 ########################################################################################################################
 import pathlib
 from os import path
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
-import numpy as np
-import torchvision
-import pandas as pd
 import lightning as L
+import numpy as np
+import pandas as pd
 import torch
-from skimage import io
-from torch.utils.data import Dataset, DataLoader
 from monai import transforms
+from skimage import io
+from torch.utils.data import DataLoader
 
 
 class DataSet:
@@ -30,14 +29,14 @@ class DataSet:
         shape: shape of the input image.
         bit_depth: bit depth of the input image.
     """
+
     def __init__(
-        self, 
+        self,
         path_data: Union[str, pathlib.PosixPath, pathlib.WindowsPath],
         trans: Optional[transforms.Compose] = None,
-        shape: Tuple[int, int] = (30, 300, 300),
+        shape: tuple[int, ...] = (30, 300, 300),
         bit_depth: int = 8,
     ):
-
         super().__init__()
 
         # assert input path
@@ -53,21 +52,21 @@ class DataSet:
 
         # transformation
         if trans is not None:
-            assert (
-                type(trans) == transforms.Compose
-            ), f'trans should be of type "torchvision.transforms.Compose" but is of type "{type(trans)}".'
+            assert isinstance(
+                trans, transforms.Compose
+            ), f'trans should be of type "monai.transforms.Compose" but is of type "{type(trans)}".'
 
         # assert shape
-        assert (
-            type(shape) == tuple
+        assert isinstance(
+            shape, tuple
         ), f'type of shape should be tuple instead it is of type: "{type(shape)}".'
 
         assert all(
             isinstance(i, int) for i in shape
         ), "values of shape should be of type integer."
 
-        assert (
-            type(bit_depth) == int
+        assert isinstance(
+            bit_depth, int
         ), f'type of bit_depth should be int instead it is of type: "{type(bit_depth)}".'
 
         self.path_data = path_data
@@ -76,7 +75,9 @@ class DataSet:
         self.trans = trans
         self._padder = transforms.SpatialPad(self.shape)
 
-        assert 'image' in self.data.columns, 'The input file requires "image" as header.'
+        assert (
+            "image" in self.data.columns
+        ), 'The input file requires "image" as header.'
 
         if bit_depth == 8:
             self.bit_depth = np.uint8
@@ -87,13 +88,11 @@ class DataSet:
             raise Warning(
                 f'bit_depth must be in {8, 16}, but is "{bit_depth}". It will be handled as 8bit and may create an integer overflow.'
             )
-        
 
     def __len__(self):
         return len(self.data)
-        
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, int]: 
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, int]:
         """
         read data (csv file)
 
@@ -110,13 +109,12 @@ class DataSet:
             index to image.
 
         """
-        img_path = self.data.loc[idx, 'image']
+        img_path = self.data.loc[idx, "image"]
         img = io.imread(img_path)
 
         img = self._preprocess(img)
 
         return img, idx
-
 
     def _preprocess(self, img: np.array) -> torch.Tensor:
         """
@@ -136,7 +134,7 @@ class DataSet:
         """
 
         assert (
-        len(img.shape) == 3
+            len(img.shape) == 3
         ), f'images are expected to be grayscale and len(img.shape)==3, here it is: "{len(img.shape)}".'
 
         img = img.astype(self.bit_depth)
@@ -153,7 +151,7 @@ class DataSet:
 
 
 class DataModule(L.LightningDataModule):
-    """""
+    """
     Pytorch lightning class which encapsulates DataSet.
 
     Args:
@@ -161,7 +159,8 @@ class DataModule(L.LightningDataModule):
         path_data_val: path to CSV file containing image paths and header "image". Only required for training.
         batch_size: batch size for training.
         shape: shape of the input image.
-    """""
+    """
+
     def __init__(
         self,
         path_data: Union[str, pathlib.PosixPath, pathlib.WindowsPath],
@@ -169,15 +168,14 @@ class DataModule(L.LightningDataModule):
             Union[str, pathlib.PosixPath, pathlib.WindowsPath]
         ] = None,
         batch_size: int = 2,
-        shape: Tuple[int, int, int] = (30, 300, 300),
+        shape: tuple[int, ...] = (30, 300, 300),
     ):
-        super().__init__()  #initializes any attributes from the parent class
+        super().__init__()  # initializes any attributes from the parent class
 
         self.path_data = path_data
         self.path_data_val = path_data_val
         self.batch_size = batch_size
         self.shape = shape
-
 
     def setup(self, stage: Optional[str] = None):
         """
@@ -186,7 +184,7 @@ class DataModule(L.LightningDataModule):
 
         # catch image data type
         tmp = pd.read_csv(self.path_data)
-        img = io.imread(tmp.loc[0, 'image'])
+        img = io.imread(tmp.loc[0, "image"])
 
         if img.dtype == np.uint8:
             max_intensity = 255.0
@@ -207,7 +205,9 @@ class DataModule(L.LightningDataModule):
             # instantiate transforms and datasetst
             trans = transforms.Compose(
                 [
-                    transforms.NormalizeIntensity(subtrahend=0, divisor=max_intensity),
+                    transforms.NormalizeIntensity(
+                        subtrahend=0, divisor=max_intensity
+                    ),
                 ]
             )
 
@@ -228,7 +228,9 @@ class DataModule(L.LightningDataModule):
             # instantiate transforms and datasets
             trans = transforms.Compose(
                 [
-                    transforms.NormalizeIntensity(subtrahend=0, divisor=max_intensity),
+                    transforms.NormalizeIntensity(
+                        subtrahend=0, divisor=max_intensity
+                    ),
                 ]
             )
 
@@ -243,7 +245,9 @@ class DataModule(L.LightningDataModule):
             # instantiate transforms and datasets
             trans = transforms.Compose(
                 [
-                    transforms.NormalizeIntensity(subtrahend=0, divisor=max_intensity),
+                    transforms.NormalizeIntensity(
+                        subtrahend=0, divisor=max_intensity
+                    ),
                 ]
             )
 
@@ -253,25 +257,21 @@ class DataModule(L.LightningDataModule):
                 shape=self.shape,
                 bit_depth=bit_depth,
             )
-            
 
     def train_dataloader(self):
         return DataLoader(
             self.data, batch_size=self.batch_size, shuffle=True, num_workers=4
         )
 
-
     def val_dataloader(self):
         return DataLoader(
             self.data_val, batch_size=self.batch_size, num_workers=4
         )
 
-
     def test_dataloader(self):
         return DataLoader(
             self.data_test, batch_size=self.batch_size, num_workers=4
         )
-
 
     def predict_dataloader(self):
         return DataLoader(
