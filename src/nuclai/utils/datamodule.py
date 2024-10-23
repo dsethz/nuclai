@@ -73,7 +73,7 @@ class DataSet:
         self.data = pd.read_csv(path_data)
         self.shape = shape
         self.trans = trans
-        self._padder = transforms.SpatialPad(self.shape)
+        self.padder = transforms.SpatialPad(self.shape, method="symmetric")
 
         assert (
             "image" in self.data.columns
@@ -141,7 +141,7 @@ class DataSet:
 
         img_t = torch.from_numpy(img).type(torch.FloatTensor)
         img_t = torch.unsqueeze(img_t, 0)
-        img_t = self._padder(img_t)
+        img_t = self.padder(img_t)
 
         # apply transforms
         if self.trans is not None:

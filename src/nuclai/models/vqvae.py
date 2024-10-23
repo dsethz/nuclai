@@ -15,6 +15,8 @@ from generative.networks.nets import VQVAE
 from monai.networks.layers import Act
 from torch.nn import functional as F
 
+from nuclai.utils.utils import save_image_mod
+
 
 class LitVQVAE(L.LightningModule):
     """
@@ -186,6 +188,7 @@ class LitVQVAE(L.LightningModule):
         self.output_act = output_act
         self.ddp_sync = ddp_sync
         self.use_checkpointing = use_checkpointing
+        self.shape = shape
         self.lr = learning_rate
         self.suffix = suffix
 
@@ -210,6 +213,9 @@ class LitVQVAE(L.LightningModule):
             ddp_sync=self.ddp_sync,
             use_checkpointing=self.use_checkpointing,
         )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.net(x)
 
     def training_step(
         self, batch: list[torch.Tensor], batch_idx: int
@@ -262,19 +268,21 @@ class LitVQVAE(L.LightningModule):
         )
 
         # save reconstructions
-        # for img, i in zip(imgs_recon, ids, strict=False):
-        #     if "out" in self.trainer.datamodule.data_test.data.columns:
-        #         path_img = self.trainer.datamodule.data_test.data.out[i.item()]
-        #     else:
-        #         path_img = os.path.basename(
-        #             self.trainer.datamodule.data_test.data.image[i.item()]
-        #         )
-        #         path_img = path_img.split(".")
-        #         path_img[0] = path_img[0] + self.suffix
-        #         path_img = ".".join(path_img)
-        #         path_img = os.path.join(self.dir_out, path_img)
-        #     # TODO: check if I need this or if I just use io.imsave
-        #     save_image_mod(img, path_img, nrow=1, padding=0)
+        for img, i in zip(imgs_recon, ids, strict=False):
+            if "out" in self.trainer.datamodule.data_test.data.columns:
+                path_img = self.trainer.datamodule.data_test.data.out[i.item()]
+            else:
+                path_img = os.path.basename(
+                    self.trainer.datamodule.data_test.data.image[i.item()]
+                )
+                path_img = path_img.split(".")
+                path_img[0] = path_img[0] + self.suffix
+                path_img = ".".join(path_img)
+                path_img = os.path.join(self.dir_out, path_img)
+
+            # remove padding and save image
+            img = self.trainer.datamodule.data_test.padder.inverse(img)
+            save_image_mod(img=img, fp=path_img)
 
         # TODO: add step where we save embeddings using https://github.com/Project-MONAI/GenerativeModels/blob/main/generative/networks/nets/vqvae.py#L445
 
