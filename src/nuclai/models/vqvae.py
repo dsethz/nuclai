@@ -368,8 +368,8 @@ class LitVQVAE(L.LightningModule):
 
     def on_save_checkpoint(self, checkpoint) -> None:
         # save input variables which are not in the __init__function on checkpoints
-        print("\non_save_checkpoint hook works!!!!\n")
+        pass
 
     def on_load_checkpoint(self, checkpoint) -> None:
         # load input variables which are not in the __init__function on checkpoints
-        print("\non_load_checkpoint hook works!!!!\n")
+        pass

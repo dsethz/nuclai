@@ -327,9 +327,11 @@ def train():
         accelerator = "cpu"
         strategy = "auto"
         n_devices = 1
+        precision = "32-true"
     else:
         accelerator = "gpu"
         n_devices = len([int(device) for device in devices])
+        precision = "16-mixed"
 
     # assert correct setup for multiprocessing
     if multiprocessing:
@@ -364,11 +366,15 @@ def train():
             spatial_dims=3,
             in_channels=1,
             out_channels=1,
-            num_channels=(256, 256),
+            num_channels=(256, 256, 256),
             num_res_channels=256,
             num_res_layers=2,
-            downsample_parameters=((2, 4, 1, 1), (2, 4, 1, 1)),
-            upsample_parameters=((2, 4, 1, 1, 0), (2, 4, 1, 1, 0)),
+            downsample_parameters=((2, 4, 1, 1), (2, 4, 1, 1), (2, 4, 1, 1)),
+            upsample_parameters=(
+                (2, 4, 1, 1, 0),
+                (2, 4, 1, 1, 0),
+                (2, 4, 1, 1, 0),
+            ),
             num_embeddings=256,
             embedding_dim=32,
             embedding_init="normal",
@@ -420,7 +426,7 @@ def train():
             CheckpointCallback(retrain=retrain),
         ],
         log_every_n_steps=log_frequency,
-        precision="16-mixed",
+        precision=precision,
     )
     trainer.fit(model, data_module, ckpt_path=path_checkpoint)
 
