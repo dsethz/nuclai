@@ -159,6 +159,69 @@ def _get_args(mode: str) -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _initialise_inferrence(
+    data: str,
+    model: str,
+    devices: list[str],
+    output_base_dir: str,
+    suffix: str,
+) -> tuple[L.Trainer, L.LightningModule, L.LightningDataModule]:
+    """
+    Construct trainer, model, and data module for testing/predicting
+    """
+    # check input arguments
+    assert os.path.isfile(data), f"File {data} does not exist."
+
+    assert os.path.isfile(model), f"File {model} does not exist."
+
+    assert isinstance(devices, list), "Devices must be a list."
+
+    assert isinstance(
+        output_base_dir, str
+    ), "Output base directory must be a string."
+
+    assert isinstance(suffix, str), "Suffix must be a string."
+
+    # create directories
+    os.makedirs(output_base_dir, exist_ok=True)
+
+    # ensure compatibility of devices with $CUDA_VISIBLE_DEVICES input
+    if len(devices) == 1 and "," in devices[0]:
+        devices = devices[0].split(",")
+
+    if "cpu" in devices:
+        accelerator = "cpu"
+        n_devices = 1
+    else:
+        accelerator = "gpu"
+        n_devices = 1  # test only on one gpu
+
+    # load model
+    if os.path.isfile(model):
+        model = LitVQVAE.load_from_checkpoint(model)
+        model.suffix = suffix
+    else:
+        raise FileNotFoundError(f'The file "{model}" does not exist.')
+
+    # set up data
+    data_module = DataModule(
+        path_data=data,
+        batch_size=1,
+        shape=(36, 336, 220),  # TODO change this to reading shape from model
+    )
+
+    # test model
+    logger = CSVLogger(output_base_dir, name="lightning_logs")
+    trainer = L.Trainer(
+        default_root_dir=output_base_dir,
+        accelerator=accelerator,
+        devices=n_devices,
+        logger=logger,
+    )
+
+    return trainer, model, data_module
+
+
 def train():
     """
     This function coordinates model training.
@@ -230,6 +293,9 @@ def train():
         output_base_dir, str
     ), "Output base directory must be a string."
 
+    # reformat shape to tuple
+    shape = tuple(shape)
+
     # create directories
     d = date.today()
     identifier = (
@@ -285,7 +351,7 @@ def train():
         path_data=path_data,
         path_data_val=path_data_val,
         batch_size=batch_size,
-        shape=tuple(shape),
+        shape=shape,
     )
 
     # random seeding
@@ -312,6 +378,7 @@ def train():
             dropout=0.0,
             ddp_sync=True,
             use_checkpointing=False,
+            shape=shape,
             learning_rate=lr,
             suffix="",
         )
@@ -353,6 +420,7 @@ def train():
             CheckpointCallback(retrain=retrain),
         ],
         log_every_n_steps=log_frequency,
+        precision="16-mixed",
     )
     trainer.fit(model, data_module, ckpt_path=path_checkpoint)
 
@@ -362,7 +430,15 @@ def test():
     This function coordinates model testing.
     """
     # get input arguments
-    # args = _get_args(mode="test")
+    args = _get_args(mode="test")
+    trainer, model, data_module = _initialise_inferrence(
+        data=args.data,
+        model=args.model,
+        devices=args.devices,
+        output_base_dir=args.output_base_dir,
+        suffix=args.suffix,
+    )
+    trainer.test(model, data_module)
 
 
 def predict():
@@ -370,4 +446,12 @@ def predict():
     This function coordinates model prediction.
     """
     # get input arguments
-    # args = _get_args(mode="predict")
+    args = _get_args(mode="predict")
+    trainer, model, data_module = _initialise_inferrence(
+        data=args.data,
+        model=args.model,
+        devices=args.devices,
+        output_base_dir=args.output_base_dir,
+        suffix=args.suffix,
+    )
+    trainer.predict(model, data_module)

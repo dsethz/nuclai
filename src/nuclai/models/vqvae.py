@@ -10,6 +10,7 @@
 import os
 
 import lightning as L
+import numpy as np
 import torch
 from generative.networks.nets import VQVAE
 from monai.networks.layers import Act
@@ -268,23 +269,34 @@ class LitVQVAE(L.LightningModule):
         )
 
         # save reconstructions
-        for img, i in zip(imgs_recon, ids, strict=False):
-            if "out" in self.trainer.datamodule.data_test.data.columns:
-                path_img = self.trainer.datamodule.data_test.data.out[i.item()]
-            else:
-                path_img = os.path.basename(
-                    self.trainer.datamodule.data_test.data.image[i.item()]
-                )
-                path_img = path_img.split(".")
-                path_img[0] = path_img[0] + self.suffix
-                path_img = ".".join(path_img)
-                path_img = os.path.join(self.dir_out, path_img)
+        if "out" in self.trainer.datamodule.data_test.data.columns:
+            path_img = self.trainer.datamodule.data_test.data.out[
+                ids[0].item()
+            ]
+            fn = path_img.split(".")[0] + self.suffix
+        else:
+            path_img = os.path.basename(
+                self.trainer.datamodule.data_test.data.image[ids[0].item()]
+            )
+            path_img = path_img.split(".")
+            path_img[0] = path_img[0] + self.suffix
+            fn = path_img[0]
+            path_img = ".".join(path_img)
+            path_img = os.path.join(self.dir_recon, path_img)
 
-            # remove padding and save image
-            img = self.trainer.datamodule.data_test.padder.inverse(img)
-            save_image_mod(img=img, fp=path_img)
+        # remove padding and save image
+        img = self.trainer.datamodule.data_test.padder.inverse(imgs[0])
+        save_image_mod(img=img, fp=path_img)
 
-        # TODO: add step where we save embeddings using https://github.com/Project-MONAI/GenerativeModels/blob/main/generative/networks/nets/vqvae.py#L445
+        # save embeddings
+        embedding = self.net.encode(imgs)
+        embedding_q, _ = self.net.quantize(embedding)
+
+        embedding = embedding.reshape((1, -1)).cpu().numpy()
+        embedding_q = embedding_q.reshape((1, -1)).cpu().numpy()
+
+        np.save(os.path.join(self.dir_emb, f"{fn}_emb.npy"), embedding)
+        np.save(os.path.join(self.dir_embq, f"{fn}_embq.npy"), embedding_q)
 
         return loss
 
@@ -293,46 +305,64 @@ class LitVQVAE(L.LightningModule):
     ) -> torch.Tensor:
         imgs, ids = batch
 
-        imgs_recon, _ = self.net(imgs)
+        # get file_name
+        if "out" in self.trainer.datamodule.data_predict.data.columns:
+            path_img = self.trainer.datamodule.data_predict.data.out[
+                ids[0].item()
+            ]
+            fn = path_img.split(".")[0] + self.suffix
+        else:
+            path_img = os.path.basename(
+                self.trainer.datamodule.data_predict.data.image[ids[0].item()]
+            )
+            fn = path_img.split(".")[0] + self.suffix
 
-        # save inferred masks
-        # for img, i in zip(imgs_recon, ids):
-        #     if "out" in self.trainer.datamodule.data_predict.data.columns:
-        #         path_img = self.trainer.datamodule.data_predict.data.out[
-        #             i.item()
-        #         ]
-        #     else:
-        #         path_img = os.path.basename(self.trainer.datamodule.data_predict.data.image[i.item()])
-        #         path_img = path_img.split('.')
-        #         path_img[0] = path_img[0] + self.suffix
-        #         path_img = ".".join(path_img)
-        #         path_img = os.path.join(
-        #             self.dir_out, path_img
-        #         )
-        #     # TODO: check if I need this or if I just use io.imsave
-        #     save_image_mod(img, path_img, nrow=1, padding=0)
+        # save embeddings
+        embedding = self.net.encode(imgs)
+        embedding_q, _ = self.net.quantize(embedding)
 
-        # TODO: add step where we save embeddings using https://github.com/Project-MONAI/GenerativeModels/blob/main/generative/networks/nets/vqvae.py#L445
+        embedding = embedding.reshape((1, -1)).cpu().numpy()
+        embedding_q = embedding_q.reshape((1, -1)).cpu().numpy()
+
+        np.save(os.path.join(self.dir_emb, f"{fn}_emb.npy"), embedding)
+        np.save(os.path.join(self.dir_embq, f"{fn}_embq.npy"), embedding_q)
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
         return optimizer
 
     def on_test_start(self):
-        self.dir_out = os.path.join(
+        self.dir_recon = os.path.join(
             self.trainer.logger.log_dir, "reconstructions"
         )
         os.makedirs(
-            self.dir_out,
+            self.dir_recon,
+            exist_ok=True,
+        )
+        self.dir_emb = os.path.join(self.trainer.logger.log_dir, "embeddings")
+        os.makedirs(
+            self.dir_emb,
+            exist_ok=True,
+        )
+        self.dir_embq = os.path.join(
+            self.trainer.logger.log_dir, "embeddings_q"
+        )
+        os.makedirs(
+            self.dir_embq,
             exist_ok=True,
         )
 
     def on_predict_start(self):
-        self.dir_out = os.path.join(
-            self.trainer.logger.log_dir, "reconstructions"
+        self.dir_emb = os.path.join(self.trainer.logger.log_dir, "embeddings")
+        os.makedirs(
+            self.dir_emb,
+            exist_ok=True,
+        )
+        self.dir_embq = os.path.join(
+            self.trainer.logger.log_dir, "embeddings_q"
         )
         os.makedirs(
-            self.dir_out,
+            self.dir_embq,
             exist_ok=True,
         )
 
