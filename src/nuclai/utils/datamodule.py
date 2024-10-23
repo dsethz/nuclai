@@ -260,17 +260,17 @@ class DataModule(L.LightningDataModule):
 
     def train_dataloader(self):
         return DataLoader(
-            self.data, batch_size=self.batch_size, shuffle=True, num_workers=4
+            self.data, batch_size=self.batch_size, shuffle=True, num_workers=2
         )
 
     def val_dataloader(self):
         return DataLoader(
-            self.data_val, batch_size=self.batch_size, num_workers=4
+            self.data_val, batch_size=self.batch_size, num_workers=2
         )
 
     def test_dataloader(self):
         return DataLoader(
-            self.data_test, batch_size=self.batch_size, num_workers=4
+            self.data_test, batch_size=self.batch_size, num_workers=2
         )
 
     def predict_dataloader(self):
