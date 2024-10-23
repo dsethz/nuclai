@@ -71,14 +71,12 @@ class LitVQVAE(L.LightningModule):
         output_act: tuple | str | None = None,
         ddp_sync: bool = True,
         use_checkpointing: bool = False,
+        shape: tuple[int, ...] = (30, 300, 300),
         learning_rate: float = 1e-3,
         suffix: str = "",
         **kwargs,
     ):
         super().__init__()
-
-        # save hyperparameters from __init__ upon checkpoints in hparams.yaml
-        self.save_hyperparameters()
 
         # assert input formats
         assert isinstance(
@@ -134,6 +132,12 @@ class LitVQVAE(L.LightningModule):
             use_checkpointing, bool
         ), f'use_checkpointing is expected to be of type "bool" but is of type "{type(use_checkpointing)}".'
         assert isinstance(
+            shape, tuple
+        ), f'shape is expected to be of type "tuple" but is of type "{type(shape)}".'
+        assert (
+            len(shape) == spatial_dims
+        ), f"Length of shape={len(shape)} must match spatial_dims={spatial_dims}."
+        assert isinstance(
             learning_rate, float
         ), f'learning_rate is expected to be of type "float" but is of type "{type(learning_rate)}".'
         assert isinstance(
@@ -155,6 +159,9 @@ class LitVQVAE(L.LightningModule):
         assert all(
             len(x) == 5 for x in upsample_parameters
         ), "Each element in upsample_parameters must have length 5."
+
+        # save hyperparameters from __init__ upon checkpoints in hparams.yaml
+        self.save_hyperparameters()
 
         # set up the VQVAE model
         self.model_class = "VQVAE"
