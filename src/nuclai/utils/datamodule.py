@@ -13,9 +13,9 @@ from typing import Optional, Union
 import lightning as L
 import numpy as np
 import pandas as pd
+import tifffile
 import torch
 from monai import transforms
-from skimage import io
 from torch.utils.data import DataLoader
 
 
@@ -110,7 +110,7 @@ class DataSet:
 
         """
         img_path = self.data.loc[idx, "image"]
-        img = io.imread(img_path)
+        img = tifffile.imread(img_path)
 
         img = self._preprocess(img)
 
@@ -184,7 +184,7 @@ class DataModule(L.LightningDataModule):
 
         # catch image data type
         tmp = pd.read_csv(self.path_data)
-        img = io.imread(tmp.loc[0, "image"])
+        img = tifffile.imread(tmp.loc[0, "image"])
 
         if img.dtype == np.uint8:
             max_intensity = 255.0
