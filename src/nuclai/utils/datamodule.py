@@ -213,7 +213,7 @@ class DataModule(L.LightningDataModule):
                     transforms.RandAdjustContrast(),
                     transforms.RandCoarseDropout(
                         holes=300, spatial_size=(2, 10, 10), fill_value=0.0
-                    ),
+                    ),  # 300 holes cover ~2% of padded images --> good chance to be visible without blocking small cells
                 ]
             )
 
