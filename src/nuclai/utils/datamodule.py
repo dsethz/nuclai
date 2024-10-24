@@ -208,6 +208,20 @@ class DataModule(L.LightningDataModule):
                     transforms.NormalizeIntensity(
                         subtrahend=0, divisor=max_intensity
                     ),
+                    transforms.RandZoom(),
+                    transforms.RandAxisFlip(),
+                    transforms.RandAdjustContrast(),
+                    transforms.RandCoarseDropout(
+                        holes=300, spatial_size=(2, 10, 10), fill_value=0.0
+                    ),
+                ]
+            )
+
+            trans_val = transforms.Compose(
+                [
+                    transforms.NormalizeIntensity(
+                        subtrahend=0, divisor=max_intensity
+                    ),
                 ]
             )
 
@@ -219,7 +233,7 @@ class DataModule(L.LightningDataModule):
             )
             self.data_val = DataSet(
                 self.path_data_val,
-                trans=trans,
+                trans=trans_val,
                 shape=self.shape,
                 bit_depth=bit_depth,
             )
@@ -260,12 +274,12 @@ class DataModule(L.LightningDataModule):
 
     def train_dataloader(self):
         return DataLoader(
-            self.data, batch_size=self.batch_size, shuffle=True, num_workers=4
+            self.data, batch_size=self.batch_size, shuffle=True, num_workers=0
         )
 
     def val_dataloader(self):
         return DataLoader(
-            self.data_val, batch_size=self.batch_size, num_workers=4
+            self.data_val, batch_size=self.batch_size, num_workers=0
         )
 
     def test_dataloader(self):
