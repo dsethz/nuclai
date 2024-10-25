@@ -207,7 +207,7 @@ def _initialise_inferrence(
     data_module = DataModule(
         path_data=data,
         batch_size=1,
-        shape=(36, 336, 220),  # TODO change this to reading shape from model
+        shape=model.shape,
     )
 
     # test model
