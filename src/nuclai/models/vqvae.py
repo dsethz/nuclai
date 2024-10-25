@@ -285,8 +285,10 @@ class LitVQVAE(L.LightningModule):
             path_img = os.path.join(self.dir_recon, path_img)
 
         # remove padding and save image
-        img = self.trainer.datamodule.data_test.padder.inverse(imgs[0])
-        save_image_mod(img=img, fp=path_img)
+        img_recon = self.trainer.datamodule.data_test.padder.inverse(
+            imgs_recon[0]
+        )
+        save_image_mod(img=img_recon, fp=path_img)
 
         # save embeddings
         embedding = self.net.encode(imgs)
