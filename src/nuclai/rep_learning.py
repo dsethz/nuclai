@@ -86,7 +86,7 @@ def _get_args(mode: str) -> argparse.Namespace:
             "--shape",
             type=int,
             nargs="+",
-            default=[32, 200, 200],
+            default=[40, 336, 224],
             help="Shape [depth, heigth, width] that all images will be cropped/padded to "
             "before model submission. Along all axes shape evenly divisible "
             "by 2**len(downsample_parameters) MUST hold. Default is [32, 200, 200].",
