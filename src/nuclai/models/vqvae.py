@@ -347,7 +347,7 @@ class LitVQVAE(L.LightningModule):
                 optimizer=optimizer,
                 mode="min",
                 factor=0.5,
-                patience=10,
+                patience=5,
                 min_lr=1e-8,
                 verbose=True,
             ),
