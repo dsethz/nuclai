@@ -13,9 +13,12 @@ import random
 import re
 from datetime import date
 
+import ipdb
 import lightning as L
+import matplotlib.pyplot as plt
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import CSVLogger
+from lightning.pytorch.tuner import Tuner
 
 from nuclai.models.vqvae import LitVQVAE
 from nuclai.utils.callbacks import CheckpointCallback
@@ -411,7 +414,7 @@ def train():
         old_epoch = int(epoch_pattern.search(path_checkpoint)[1])
         epochs += old_epoch
 
-    # train model
+    # set up trainer
     logger = CSVLogger(output_base_dir, name="lightning_logs")
     trainer = L.Trainer(
         max_epochs=epochs,
@@ -428,6 +431,21 @@ def train():
         log_every_n_steps=log_frequency,
         precision=precision,
     )
+
+    # find initial learning rate
+    tuner = Tuner(trainer)
+    lr_finder = tuner.lr_find(model, datamodule=data_module)
+
+    lr_finder.plot(suggest=True)
+    plt.savefig(os.path.join(output_base_dir, "lr_finder.png"))
+    plt.close()
+
+    new_lr = lr_finder.suggestion()
+
+    ipdb.set_trace()
+    model.hparams.lr = new_lr
+
+    # train model
     trainer.fit(model, data_module, ckpt_path=path_checkpoint)
 
 
