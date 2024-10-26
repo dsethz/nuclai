@@ -16,7 +16,7 @@ from datetime import date
 import ipdb
 import lightning as L
 import matplotlib.pyplot as plt
-from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.loggers import CSVLogger
 from lightning.pytorch.tuner import Tuner
 
@@ -408,6 +408,8 @@ def train():
         save_top_k=1,
     )
 
+    lr_monitor = LearningRateMonitor(logging_interval="step")
+
     # update max_epoch when loading from checkpoint
     if path_checkpoint is not None:
         epoch_pattern = re.compile(r"epoch=([0-9]+)")
@@ -426,6 +428,7 @@ def train():
         callbacks=[
             checkpoint_best_loss,
             checkpoint_latest,
+            lr_monitor,
             CheckpointCallback(retrain=retrain),
         ],
         log_every_n_steps=log_frequency,
@@ -441,9 +444,10 @@ def train():
     plt.close()
 
     new_lr = lr_finder.suggestion()
-
     ipdb.set_trace()
-    model.hparams.lr = new_lr
+
+    model.hparams.learning_rate = new_lr
+    model.learning_rate = new_lr  # not sure if both necessary
 
     # train model
     trainer.fit(model, data_module, ckpt_path=path_checkpoint)

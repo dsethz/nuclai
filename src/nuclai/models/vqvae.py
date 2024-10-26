@@ -14,6 +14,7 @@ import numpy as np
 import torch
 from generative.networks.nets import VQVAE
 from monai.networks.layers import Act
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from nuclai.utils.evaluation import mse_loss_masked
 from nuclai.utils.utils import crop_original, save_image_mod
@@ -70,7 +71,7 @@ class LitVQVAE(L.LightningModule):
         decay: float = 0.5,
         epsilon: float = 1e-5,
         dropout: float = 0.0,
-        act: tuple | str | None = Act.RELU,
+        act: tuple | str | None = Act.GELU,
         output_act: tuple | str | None = None,
         ddp_sync: bool = True,
         use_checkpointing: bool = False,
@@ -190,7 +191,7 @@ class LitVQVAE(L.LightningModule):
         self.ddp_sync = ddp_sync
         self.use_checkpointing = use_checkpointing
         self.shape = shape
-        self.lr = learning_rate
+        self.learning_rate = learning_rate
         self.suffix = suffix
 
         self.net = VQVAE(
@@ -340,8 +341,21 @@ class LitVQVAE(L.LightningModule):
         np.save(os.path.join(self.dir_embq, f"{fn}_embq.npy"), embedding_q)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
-        return optimizer
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
+        lr_scheduler = {
+            "scheduler": ReduceLROnPlateau(
+                optimizer=optimizer,
+                mode="min",
+                factor=0.5,
+                patience=10,
+                min_lr=1e-8,
+                verbose=True,
+            ),
+            "monitor": "loss_val",
+            "frequency": 1,
+            "name": "reduce_lr_on_plateau",
+        }
+        return [optimizer], [lr_scheduler]
 
     def on_test_start(self):
         self.dir_recon = os.path.join(
