@@ -18,6 +18,8 @@ import torch
 from monai import transforms
 from torch.utils.data import DataLoader
 
+from nuclai.utils.utils import _get_mask
+
 
 class DataSet:
     """
@@ -112,9 +114,9 @@ class DataSet:
         img_path = self.data.loc[idx, "image"]
         img = tifffile.imread(img_path)
 
-        img = self._preprocess(img)
+        img, mask = self._preprocess(img)
 
-        return img, idx
+        return img, mask, idx
 
     def _preprocess(self, img: np.array) -> torch.Tensor:
         """
@@ -141,13 +143,16 @@ class DataSet:
 
         img_t = torch.from_numpy(img).type(torch.FloatTensor)
         img_t = torch.unsqueeze(img_t, 0)
-        img_t = self.padder(img_t)
 
         # apply transforms
         if self.trans is not None:
             img_t = self.trans(img_t)
 
-        return img_t
+        # TODO: for now apply padding after transformations (see comment in DataModule.setup)
+        img_t = self.padder(img_t)
+        mask = _get_mask(img=img_t, padder=self.padder)
+
+        return img_t, mask
 
 
 class DataModule(L.LightningDataModule):
@@ -203,12 +208,13 @@ class DataModule(L.LightningDataModule):
             assert self.path_data_val is not None, "path_data_val is missing."
 
             # instantiate transforms and datasetst
+            # TODO: use translation to not only have centered images (e.g. RandAffine)
             trans = transforms.Compose(
                 [
                     transforms.NormalizeIntensity(
                         subtrahend=0, divisor=max_intensity
                     ),
-                    transforms.RandZoom(),
+                    transforms.RandZoom(keep_size=True),
                     transforms.RandAxisFlip(),
                     transforms.RandAdjustContrast(),
                     transforms.RandCoarseDropout(

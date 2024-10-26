@@ -14,9 +14,9 @@ import numpy as np
 import torch
 from generative.networks.nets import VQVAE
 from monai.networks.layers import Act
-from torch.nn import functional as F
 
-from nuclai.utils.utils import save_image_mod
+from nuclai.utils.evaluation import mse_loss_masked
+from nuclai.utils.utils import crop_original, save_image_mod
 
 
 class LitVQVAE(L.LightningModule):
@@ -221,11 +221,14 @@ class LitVQVAE(L.LightningModule):
     def training_step(
         self, batch: list[torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
-        imgs, ids = batch
+        imgs, masks, ids = batch
 
         # forward pass
         imgs_recon, loss_quant = self.net(imgs)
-        loss_recon = F.mse_loss(imgs_recon, imgs)
+        loss_recon = mse_loss_masked(
+            output=imgs_recon, target=imgs, mask=masks
+        )
+        # loss_recon = F.mse_loss(imgs_recon, imgs)
         loss = loss_recon + loss_quant
 
         self.log("loss", loss, on_step=True, on_epoch=True, sync_dist=True)
@@ -240,10 +243,13 @@ class LitVQVAE(L.LightningModule):
     def validation_step(
         self, batch: list[torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
-        imgs, ids = batch
+        imgs, masks, ids = batch
 
         imgs_recon, loss_quant = self.net(imgs)
-        loss_recon = F.mse_loss(imgs_recon, imgs)
+        loss_recon = mse_loss_masked(
+            output=imgs_recon, target=imgs, mask=masks
+        )
+        # loss_recon = F.mse_loss(imgs_recon, imgs)
         loss = loss_recon + loss_quant
 
         self.log("loss_val", loss, on_step=True, on_epoch=True, sync_dist=True)
@@ -253,10 +259,13 @@ class LitVQVAE(L.LightningModule):
     def test_step(
         self, batch: list[torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
-        imgs, ids = batch
+        imgs, masks, ids = batch
 
         imgs_recon, loss_quant = self.net(imgs)
-        loss_recon = F.mse_loss(imgs_recon, imgs)
+        loss_recon = mse_loss_masked(
+            output=imgs_recon, target=imgs, mask=masks
+        )
+        # loss_recon = F.mse_loss(imgs_recon, imgs)
         loss = loss_recon + loss_quant
 
         # save loss
@@ -285,9 +294,10 @@ class LitVQVAE(L.LightningModule):
             path_img = os.path.join(self.dir_recon, path_img)
 
         # remove padding and save image
-        img_recon = self.trainer.datamodule.data_test.padder.inverse(
-            imgs_recon[0]
-        )
+        img_recon = crop_original(img=imgs_recon[0], mask=masks[0])
+        # img_recon = self.trainer.datamodule.data_test.padder.inverse(
+        #     imgs_recon[0]
+        # )
         save_image_mod(img=img_recon, fp=path_img)
 
         # save embeddings
@@ -305,7 +315,7 @@ class LitVQVAE(L.LightningModule):
     def predict_step(
         self, batch: list[torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
-        imgs, ids = batch
+        imgs, _, ids = batch
 
         # get file_name
         if "out" in self.trainer.datamodule.data_predict.data.columns:
