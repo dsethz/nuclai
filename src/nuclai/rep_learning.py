@@ -13,7 +13,6 @@ import random
 import re
 from datetime import date
 
-import ipdb
 import lightning as L
 import matplotlib.pyplot as plt
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
@@ -408,7 +407,7 @@ def train():
         save_top_k=1,
     )
 
-    lr_monitor = LearningRateMonitor(logging_interval="step")
+    lr_monitor = LearningRateMonitor(logging_interval="epoch")
 
     # update max_epoch when loading from checkpoint
     if path_checkpoint is not None:
@@ -444,7 +443,6 @@ def train():
     plt.close()
 
     new_lr = lr_finder.suggestion()
-    ipdb.set_trace()
 
     model.hparams.learning_rate = new_lr
     model.learning_rate = new_lr  # not sure if both necessary
