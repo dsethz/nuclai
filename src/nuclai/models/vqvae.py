@@ -71,7 +71,7 @@ class LitVQVAE(L.LightningModule):
         decay: float = 0.5,
         epsilon: float = 1e-5,
         dropout: float = 0.0,
-        act: tuple | str | None = Act.GELU,
+        act: tuple | str | None = Act.LEAKYRELU,
         output_act: tuple | str | None = None,
         ddp_sync: bool = True,
         use_checkpointing: bool = False,
