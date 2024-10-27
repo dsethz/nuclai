@@ -349,7 +349,6 @@ class LitVQVAE(L.LightningModule):
                 factor=0.5,
                 patience=5,
                 min_lr=1e-8,
-                verbose=True,
             ),
             "monitor": "loss_val",
             "frequency": 1,
