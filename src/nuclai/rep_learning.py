@@ -14,8 +14,10 @@ import re
 from datetime import date
 
 import lightning as L
+import matplotlib.pyplot as plt
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.loggers import CSVLogger
+from lightning.pytorch.tuner import Tuner
 
 from nuclai.models.vqvae import LitVQVAE
 from nuclai.utils.callbacks import CheckpointCallback
@@ -431,6 +433,25 @@ def train():
         log_every_n_steps=log_frequency,
         precision=precision,
     )
+
+    # find optimal learning rate
+    tuner = Tuner(trainer)
+    lr_finder = tuner.lr_find(model, datamodule=data_module)
+
+    lr_finder.plot(suggest=True)
+    plt.savefig(os.path.join(output_base_dir, "lr_finder.png"))
+    plt.close()
+
+    new_lr = lr_finder.suggestion()
+
+    # only adapt lr if new_lr too small
+    # we use OnPlateau scheduler and don't want to start with too low lr
+    if new_lr >= 1e-5:
+        model.hparams.learning_rate = new_lr
+        model.learning_rate = new_lr  # not sure if both necessary
+    else:
+        model.hparams.learning_rate = lr
+        model.learning_rate = lr
 
     # train model
     trainer.fit(model, data_module, ckpt_path=path_checkpoint)
