@@ -186,6 +186,9 @@ class LitMLP(L.LightningModule):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.net(x)
 
+    def setup(self, stage: Optional[str] = None):
+        self.loss_weight = self.loss_weight.to(self.device)
+
     def training_step(
         self, batch: list[torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
