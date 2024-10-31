@@ -15,6 +15,8 @@ import pandas as pd
 import torch
 from torch import nn
 from torch.nn import functional as F
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torchmetrics import F1Score
 
 
 class MLP(nn.Module):
@@ -206,22 +208,43 @@ class LitMLP(L.LightningModule):
             "ids": ids,
         }
 
-    # TODO: include f1 score
+    def on_validation_start(self):
+        self.f1_val = F1Score(task="binary", threshold=0.5)
+
     def validation_step(
         self, batch: list[torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
         features, labels, ids = batch
 
         prediction = self.net(features)
+
+        # log loss
         loss = F.binary_cross_entropy(
             prediction, labels, weight=self.loss_weight
         )
 
         self.log("loss_val", loss, on_step=True, on_epoch=True, sync_dist=True)
 
+        # update f1_val
+        self.f1_val.update(
+            torch.squeeze(prediction, -1), torch.squeeze(labels, -1)
+        )
+
         return loss
 
-    # TODO: include f1 score
+    def on_validation_epoch_end(self):
+        f1 = self.f1_val.compute()
+        self.log("f1_val", f1, sync_dist=True)
+
+    def on_test_start(self):
+        # create prediction data frame to which all predictions are appended
+        self.prediction_data = pd.DataFrame(
+            columns=["id", "prediction", "label"]
+        )
+
+        # set up f1 metric
+        self.f1_test = F1Score(task="binary", threshold=0.5)
+
     def test_step(
         self, batch: list[torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
@@ -241,6 +264,11 @@ class LitMLP(L.LightningModule):
             sync_dist=False,
         )
 
+        # update f1_test
+        self.f1_test.update(
+            torch.squeeze(prediction, -1), torch.squeeze(labels, -1)
+        )
+
         # save predictions and labels
         idx = os.path.basename(
             self.trainer.datamodule.data_test.data[str(ids[0].item())]["path"]
@@ -255,6 +283,21 @@ class LitMLP(L.LightningModule):
         self.prediction_data = pd.concat([self.prediction_data, tmp])
 
         return loss
+
+    def on_test_epoch_end(self):
+        # save prediction data frame
+        self.prediction_data.to_csv(
+            os.path.join(self.trainer.logger.log_dir, "predictions.csv"),
+            index=False,
+        )
+
+        # compute f1 score
+        f1 = self.f1_test.compute()
+        self.log("f1_test", f1, sync_dist=True)
+
+    def on_predict_start(self):
+        # create prediction data frame to which all predictions are appended
+        self.prediction_data = pd.DataFrame(columns=["id", "prediction"])
 
     def predict_step(
         self, batch: list[torch.Tensor], batch_idx: int
@@ -277,34 +320,28 @@ class LitMLP(L.LightningModule):
         )
         self.prediction_data = pd.concat([self.prediction_data, tmp])
 
-    # TODO: add lr_scheduler
-    def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
-        return optimizer
-
-    def on_test_start(self):
-        # create prediction data frame to which all predictions are appended
-        self.prediction_data = pd.DataFrame(
-            columns=["id", "prediction", "label"]
-        )
-
-    def on_test_end(self):
-        # save prediction data frame
-        self.prediction_data.to_csv(
-            os.path.join(self.trainer.logger.log_dir, "predictions.csv"),
-            index=False,
-        )
-
-    def on_predict_start(self):
-        # create prediction data frame to which all predictions are appended
-        self.prediction_data = pd.DataFrame(columns=["id", "prediction"])
-
     def on_predict_end(self):
         # save prediction data frame
         self.prediction_data.to_csv(
             os.path.join(self.trainer.logger.log_dir, "predictions.csv"),
             index=False,
         )
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
+        lr_scheduler = {
+            "scheduler": ReduceLROnPlateau(
+                optimizer=optimizer,
+                mode="min",
+                factor=0.5,
+                patience=5,
+                min_lr=1e-8,
+            ),
+            "monitor": "loss_val",
+            "frequency": 1,
+            "name": "reduce_lr_on_plateau",
+        }
+        return [optimizer], [lr_scheduler]
 
     def on_save_checkpoint(self, checkpoint) -> None:
         # save input variables which are not in the __init__function on checkpoints

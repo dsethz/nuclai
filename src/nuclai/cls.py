@@ -14,8 +14,10 @@ import re
 from datetime import date
 
 import lightning as L
-from lightning.pytorch.callbacks import ModelCheckpoint
+import matplotlib.pyplot as plt
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.loggers import CSVLogger
+from lightning.pytorch.tuner import Tuner
 
 from nuclai.models.mlp import LitMLP
 from nuclai.utils.callbacks import CheckpointCallback
@@ -396,8 +398,13 @@ def train():
     else:
         raise ValueError(f"Model type {model_type} is not supported.")
 
-    # TODO: add callback for f1 on validation set
     # set up callback for best model
+    checkpoint_best_f1 = ModelCheckpoint(
+        monitor="f1_val",
+        filename="best-f1-{epoch}-{step}",
+        mode="max",
+    )
+
     checkpoint_best_loss = ModelCheckpoint(
         monitor="loss_val",
         filename="best-loss-{epoch}-{step}",
@@ -410,6 +417,8 @@ def train():
         mode="max",
         save_top_k=1,
     )
+
+    lr_monitor = LearningRateMonitor(logging_interval="epoch")
 
     # update max_epoch when loading from checkpoint
     if path_checkpoint is not None:
@@ -427,8 +436,10 @@ def train():
         devices=n_devices,
         logger=logger,
         callbacks=[
+            checkpoint_best_f1,
             checkpoint_best_loss,
             checkpoint_latest,
+            lr_monitor,
             CheckpointCallback(retrain=retrain),
         ],
         log_every_n_steps=log_frequency,
@@ -436,7 +447,24 @@ def train():
         sync_batchnorm=sync_batchnorm,
     )
 
-    # TODO: add lr tuner
+    # find optimal learning rate
+    tuner = Tuner(trainer)
+    lr_finder = tuner.lr_find(model, datamodule=data_module)
+
+    lr_finder.plot(suggest=True)
+    plt.savefig(os.path.join(output_base_dir, "lr_finder.png"))
+    plt.close()
+
+    new_lr = lr_finder.suggestion()
+
+    # only adapt lr if new_lr too small
+    # we use OnPlateau scheduler and don't want to start with too low lr
+    if new_lr >= 1e-5:
+        model.hparams.learning_rate = new_lr
+        model.learning_rate = new_lr  # not sure if both necessary
+    else:
+        model.hparams.learning_rate = lr
+        model.learning_rate = lr
 
     # train model
     trainer.fit(model, data_module, ckpt_path=path_checkpoint)
