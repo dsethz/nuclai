@@ -210,7 +210,7 @@ class LitMLP(L.LightningModule):
         }
 
     def on_validation_start(self):
-        self.f1_val = F1Score(task="binary", threshold=0.5)
+        self.f1_val = F1Score(task="binary", threshold=0.5).to(self.device)
 
         # get sigmoid for predictions
         self.sigmoid = nn.Sigmoid()
@@ -250,7 +250,7 @@ class LitMLP(L.LightningModule):
         )
 
         # set up f1 metric
-        self.f1_test = F1Score(task="binary", threshold=0.5)
+        self.f1_test = F1Score(task="binary", threshold=0.5).to(self.device)
 
         # get sigmoid for predictions
         self.sigmoid = nn.Sigmoid()
