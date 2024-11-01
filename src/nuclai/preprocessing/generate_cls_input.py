@@ -99,11 +99,19 @@ def main():
 
     # create dictionary
     data = {}
+    unlabeled_ids = []
     i, j = 0, 0
     while i < len(features):
         path = features[i]
         idx = os.path.basename(path).split(".")[0].split("_")[-2]
 
+        # check if labels[idx] exists
+        if idx not in labels:
+            unlabeled_ids.append(path)
+            i += 1
+            continue
+
+        # if label exists and is in class_pos or class_neg add to data
         if labels[idx]["ctype"] == class_pos:
             tmp = {"path": path, "label": 1}
             data[j] = tmp
@@ -119,6 +127,7 @@ def main():
 
     print(f"Number of kept samples: {j}")
     print(f"Number of removed samples: {i - j}")
+    print(f"Unlabeled samples: {unlabeled_ids}")
 
     with open(os.path.join(path_out, f"{prefix}_data.json"), "w") as f:
         json.dump(data, f)
