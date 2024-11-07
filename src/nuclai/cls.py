@@ -466,7 +466,7 @@ def train():
 
     # only adapt lr if new_lr too small
     # we use OnPlateau scheduler and don't want to start with too low lr
-    if new_lr >= 1e-5:
+    if new_lr is not None and new_lr >= 1e-5:
         model.hparams.learning_rate = new_lr
         model.learning_rate = new_lr  # not sure if both necessary
     else:
