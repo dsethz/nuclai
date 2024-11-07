@@ -3,30 +3,26 @@
 # Author:               Lukas Radtke, Daniel Schirmacher                                                               #
 #                       Cell Systems Dynamics Group, D-BSSE, ETH Zurich                                                #
 # Python Version:       3.10.13                                                                                        #
-# Date:                 07.03.2024                                                                                     #                                                                                          #
+# Date:                 07.03.2024                                                                                     #
 ########################################################################################################################
-import numpy as np
 import argparse
-import glob
 import os
-import imageio.v2 as imageio
-from skimage import measure
-import pickle
-import difflib
-from scipy.spatial.distance import cdist
-from tqdm.auto import tqdm
-from histomicstk.features import compute_nuclei_features
+
 import pandas as pd
-import ipdb
+
+# import imageio.v2 as imageio
+import tifffile
+from skimage import measure
+
 
 def args_parse():
-    '''
+    """
      Catches user input from the CLI.
 
     Parameters
 
     ----------
-        
+
     -
 
     Return
@@ -35,180 +31,125 @@ def args_parse():
 
     Returns a namespace from `argparse.parse_args()`.
 
-    '''
-    desc = 'Program to generate feature matrices for segmented nuclei.'
+    """
+    desc = "Program to generate feature matrices for segmented nuclei."
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(
-        '--image_dir',
+        "--image",
         type=str,
-        default=r'N:\schroeder\Data\LR\feature_test\img',
-        help=(
-        'Path to the directory that contains all nuclear images. '
-        'Expects shape ZYX.'
-        )
-    )   
-
-    parser.add_argument(
-        '--mask_dir',
-        type=str,
-        default=r'N:\schroeder\Data\LR\feature_test\mask',
-        help=(
-        'Path to the directory that contains the corresponding '
-        'nuclear masks to the images. Image and mask filename pairs should '
-        'share the same beginning. Expects shape ZYX.' 
-        )
+        default=r"N:\schroeder\Data\DS\PhD\nucleus_classification\raw_data\3D\240930_DAPI_GATA1_PU1_LAMININ_SCA1_LY6G\subset\c0_80-130_3940-6672_4100-6661.tif",
+        help=("Path to nucleus image."),
     )
 
     parser.add_argument(
-        '--filetype',
+        "--mask",
         type=str,
-        default='.tif',
-        help=(
-        'Specify which filetype the image files and mask files have. '
-        'E.g. \'.tif\', which are the preferred filetype'
-        )
+        default=r"N:\schroeder\Data\DS\PhD\nucleus_classification\data\3d\images\segmentation\mouse\dapi_gata1_pu1_laminin_sca1_ly6g\240930\4_label_assignment\240930_DAPI_C0_curated.tif",
+        help=("Path to segmentation mask"),
     )
 
     parser.add_argument(
-        '--out_dir',
+        "--spacing",
+        type=float,
+        nargs=3,
+        default=(1.0, 0.24, 0.24),
+        help=("Voxel spacing for the images."),
+    )
+
+    parser.add_argument(
+        "--out",
         type=str,
-        default=r'N:\schroeder\Data\LR\feature_test\output',
-        help='Filepath where to save the output .csv file under.'
+        default=r"N:\schroeder\Data\DS\PhD\nucleus_classification\data\3d\images\segmentation\mouse\dapi_gata1_pu1_laminin_sca1_ly6g\240930\4_label_assignment",
+        help="Path to output directory.",
     )
 
     return parser.parse_args()
 
 
-def generate_features(img: np.ndarray, mask: dict) -> np.ndarray:
-    """
-    Wrapper that calls the individual feature generating functions and
-    concatenates their output to a single feature vector for each individual 
-    segmentation mask. 
-
-    Parameter
-    ------
-
-    img: np.ndarray
-        Image of shape ZYX. Expected to match shape of mask.
-
-    mask: np.ndarray
-        Mask array of shape ZYX. Expected to match shape of img.
-
-    Returns:
-    ------
-    Feature matrix of shape (instances, features). Feature names is a list of 
-    length number of features. It holds the names of all generated features.
-    
-    """
-    highest_idx = max(np.unique(mask))
-    feature_matrix = np.full((highest_idx, 104), np.nan)
-
-    # Generates the HistomicsTK features for all masks in 3D
-    histomics_3d = np.full((highest_idx, 88, img.shape[0]), np.nan)
-    histomics_names = compute_nuclei_features(mask[1, :, :], img[1, :, :]).columns
-    histomics_names = histomics_names.tolist()
-    for z in tqdm(range(0, img.shape[0]), ncols=100, desc='\n### Computing HistomicsTK features'):
-        if len(np.unique(mask[z, :, :])) > 1:
-            histomics_z = compute_nuclei_features(mask[z, :, :], img[z, :, :]).values
-            for row in range(0, histomics_z.shape[0]):
-                histomics_3d[int(histomics_z[row, 0] - 1), :, z] = histomics_z[row, :]
-        else:
-            print(f'\n### No masks found in z-layer #{z}.')
-    histomics_avg = np.nanmean(histomics_3d, axis=2)
-
-    # Alternative Regionprops feature in 3D
-    regionprops_3d = np.full((highest_idx, 16, img.shape[0]), np.nan)
-    for z in tqdm(range(0, img.shape[0]), ncols=100, desc='\n### Computing sklearn regionprops features'):
-        if len(np.unique(mask[z, :, :])) > 1:
-            regionprops_z = measure.regionprops(mask, img, cache=True)
-            for i in range(0, len(regionprops_z)):
-                label = regionprops_z[i].label
-                regionprops_3d[(label-1), 0, z] = regionprops_z[i].axis_major_length
-                regionprops_3d[(label-1), 1, z] = regionprops_z[i].euler_number
-                inertia_tensor = regionprops_z[i].inertia_tensor.ravel()
-                regionprops_3d[(label-1), 2:11, z] = inertia_tensor
-                inertia_tensor_eigvals = regionprops_z[i].inertia_tensor_eigvals[:]
-                regionprops_3d[(label-1), 11:14, z] = inertia_tensor_eigvals
-        else:
-            print(f'\n### No masks found in z-layer index {z}.')
-    regionprops_avg = np.nanmean(regionprops_3d, axis=2)
-    feature_matrix[:, 0:88] = histomics_avg
-    feature_matrix[:, 88:] = regionprops_avg
-    feature_matrix = feature_matrix[:, :-2] #drop the last two columns, as they somehow always turn out NaN
-    not_all_nan_rows = ~np.all(np.isnan(feature_matrix), axis=1)
-    feature_matrix = feature_matrix[not_all_nan_rows]
-
-    return feature_matrix, histomics_names
-
-
 def main():
     args = args_parse()
-    image_directory = args.image_dir
-    mask_directory = args.mask_dir
-    filetype = args.filetype
-    out_dir = args.out_dir
-    
-    os.makedirs(out_dir, exist_ok=True)
+    path_i = args.image
+    path_m = args.mask
+    spacing = tuple(args.spacing)
+    path_out = args.out
+
+    os.makedirs(path_out, exist_ok=True)
+
+    # select properties
+    properties = [
+        "area",  # Area of the region i.e. number of pixels of the region scaled by pixel-area.
+        "area_bbox",  # Area of the bounding box i.e. number of pixels of the bounding box scaled by pixel-area.
+        "area_convex",  # Area of the convex hull image, the smallest convex polygon enclosing the region.
+        "area_filled",  # Area of the region with all holes filled in.
+        "axis_major_length",  # Length of the major axis of the ellipse that matches the second central moments of the region.
+        "axis_minor_length",  # Length of the minor axis of the ellipse that matches the second central moments of the region.
+        #    "bbox",  # Bounding box (min_row, min_col, max_row, max_col) of the region.
+        #    "centroid",  # Centroid coordinate tuple (row, col) of the region.
+        #    "centroid_local",  # Centroid coordinate tuple (row, col) relative to the region bounding box.
+        #    "centroid_weighted",  # Centroid weighted with intensity values, giving (row, col) coordinates.
+        #    "centroid_weighted_local",  # Intensity-weighted centroid relative to the region bounding box.
+        #    "coords_scaled",  # Coordinates of the region scaled by spacing, in (row, col) format.
+        #    "coords",  # Coordinates of the region in (row, col) format.
+        "eccentricity",  # Eccentricity of the ellipse matching the second moments of the region (range [0, 1), with 0 being circular).
+        "equivalent_diameter_area",  # Diameter of a circle with the same area as the region.
+        "euler_number",  # Euler characteristic: number of connected components minus the number of holes in the region.
+        "extent",  # Ratio of the region’s area to the area of the bounding box (area / (rows * cols)).
+        "feret_diameter_max",  # Maximum Feret's diameter: longest distance between points on the convex hull of the region.
+        #    "image",  # Binary region image, same size as the bounding box.
+        #    "image_convex",  # Binary convex hull image, same size as the bounding box.
+        #    "image_filled",  # Binary region image with holes filled, same size as the bounding box.
+        #    "image_intensity",  # Intensity image inside the region's bounding box.
+        "inertia_tensor",  # Inertia tensor for rotation around the region's center of mass.
+        "inertia_tensor_eigvals",  # Eigenvalues of the inertia tensor, in decreasing order.
+        "intensity_max",  # Maximum intensity value in the region.
+        "intensity_mean",  # Mean intensity value in the region.
+        "intensity_min",  # Minimum intensity value in the region.
+        # "intensity_std",  # Standard deviation of the intensity values in the region. # Doesnt work.
+        "label",  # Label of the region in the labeled input image.
+        "moments",  # Spatial moments up to the 3rd order.
+        "moments_central",  # Central moments (translation-invariant) up to the 3rd order.
+        "moments_hu",  # Hu moments (translation, scale, and rotation-invariant).
+        "moments_normalized",  # Normalized moments (translation and scale-invariant) up to the 3rd order.
+        "moments_weighted",  # Intensity-weighted spatial moments up to the 3rd order.
+        "moments_weighted_central",  # Intensity-weighted central moments (translation-invariant) up to the 3rd order.
+        "moments_weighted_hu",  # Intensity-weighted Hu moments (translation, scale, and rotation-invariant).
+        "moments_weighted_normalized",  # Intensity-weighted normalized moments up to the 3rd order.
+        "num_pixels",  # Number of foreground pixels in the region.
+        "orientation",  # Orientation of the major axis of the ellipse that matches the second moments of the region.
+        "perimeter",  # Perimeter of the object, approximated using a 4-connectivity contour.
+        "perimeter_crofton",  # Perimeter estimated by the Crofton formula, based on 4 directions.
+        #    "slice",  # Slice object to extract the region from the source image.
+        "solidity",  # Solidity: ratio of region area to convex hull area.
+    ]  # The removed properties are not informative as they relate to absolute positions in the image
+
+    # load image/mask/coords
+    img_name = os.path.basename(path_i).split(".")[0]
+    image = tifffile.imread(path_i)
+    mask = tifffile.imread(path_m)
+
+    # get features
+    mask_3D_features = {}
+    for prop in properties:
+        try:
+            mask_3D_prop = measure.regionprops_table(
+                mask,
+                intensity_image=image,
+                spacing=spacing,
+                properties=[prop],
+            )
+            for key, value in mask_3D_prop.items():
+                mask_3D_features[key] = value
+        except Exception as e:  # noqa BLE001
+            print(f"Error calculating 3D property {prop}: {e}")
+
+    features_3D = pd.DataFrame(mask_3D_features)
+    features_3D.rename(columns={"label": "mask_id"}, inplace=True)
+    features_3D.to_csv(
+        os.path.join(path_out, f"classic_features_3D_{img_name}.csv"),
+        index=False,
+    )
 
 
-    # Detects all filenames in the user-specified input directories
-    img_filenames = glob.glob(os.path.join(image_directory, f'*{filetype}'))
-    mask_filenames = glob.glob(os.path.join(mask_directory, f'*{filetype}'))
-
-    img_filenames.sort()
-    mask_filenames.sort()
-    print(f'\n### Detected {len(img_filenames)} images, {len(mask_filenames)} mask-files.')
-
-    assert len(img_filenames) == len(mask_filenames), f'Error: Detected {len(img_filenames)} images and {len(mask_filenames)}.'
-
-    # Loads the pairs of img-file and corresponding mask-file
-    for img_name, mask_name in zip(img_filenames, mask_filenames):
-        
-        # Loads img to nparray
-        img_path = os.path.join(image_directory, img_name)
-        img = imageio.imread(img_path)
-        img = np.array(img)
-        print(f'\n### Image of shape {img.shape} loaded.')
-    
-
-        # Loads masks to npndarray
-        mask_path = os.path.join(mask_directory, mask_name)
-        mask = imageio.imread(mask_path)
-        mask = np.array(mask, dtype=np.uint32)
-        print(f'\n### Mask array of shape {mask.shape} loaded.')
-
-        assert img.shape == mask.shape, f'Error image with name {img_name} and mask with name {mask_name} are of different shape:{img.shape} and {mask.shape}'
-
-        feature_matrix, histomics_names = generate_features(img, mask) 
-        
-        csv_name = str(os.path.splitext(os.path.basename(img_name))[0]) + '_feature_matrix.csv'
-        final_outdir = os.path.join(out_dir, csv_name)
-        np.savetxt(final_outdir, feature_matrix, delimiter=',')
-        print(f'\n### Created .csv-file for feature-matrix of image {img_name}.')
-    
-        # save feature names
-        sklearn_feature_names = [
-            'axis_major_length',
-            'euler_number',
-            'inertia_tensor_1',
-            'inertia_tensor_2',
-            'inertia_tensor_3',
-            'inertia tensor_4',
-            'inertia_tensor_5',
-            'inertia_tensor_6',
-            'inertia_tensor_7',
-            'inertia_tensor_8',
-            'inertia_tensor_9',
-            'inertia_tensor_eigvals_1',
-            'inertia_tensor_eigvals_2',
-            'inertia_tensor_eigvals_3'
-            ]
-        
-        feature_names = histomics_names + sklearn_feature_names
-        feature_names = np.array(feature_names)
-        np.savetxt(os.path.join(out_dir, 'feature_names.csv'), feature_names, fmt='%s', delimiter=',')
-        print(f'\n### Feature names vector saved to {out_dir}.')
-        
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
