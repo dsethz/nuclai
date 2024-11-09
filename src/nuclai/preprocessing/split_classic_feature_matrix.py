@@ -36,21 +36,21 @@ def arg_parse():
     parser.add_argument(
         "--features",
         type=str,
-        default=r"N:\schroeder\Data\DS\PhD\nucleus_classification\data\3d\images\segmentation\mouse\cd41\rep4\subset\7_classic_features\classic_features_3D_c0_0-68_1000-2400_3100-4500.csv",
+        default=r"N:\schroeder\Data\DS\PhD\nucleus_classification\data\3d\images_and_features\segmentation\mouse\cd41\acat_rep2\subset\7_classic_features\classic_features_3D_c0_0-55_1950-4500_11550-14862.csv",
         help="Path to CSV file containing regionprops_table dataframe.",
     )
 
     parser.add_argument(
         "--out",
         type=str,
-        default=r"N:\schroeder\Data\DS\PhD\nucleus_classification\data\3d\images\segmentation\mouse\cd41\rep4\subset\7_classic_features\split_1000",
+        default=r"N:\schroeder\Data\DS\PhD\nucleus_classification\data\3d\images_and_features\segmentation\mouse\cd41\acat_rep2\subset\7_classic_features\split",
         help="Path to output directory.",
     )
 
     parser.add_argument(
         "--prefix",
         type=str,
-        default="cd41_val1000",
+        default="cd41_test",
         help="Prefix for output file names. Will be used as '{prefix}_{mask_id}_cfeats.npy'.",
     )
 
@@ -70,9 +70,13 @@ def main():
     # create output directory
     os.makedirs(path_out, exist_ok=True)
 
-    # loop over each mask and save npy file
+    # pop mask_ids
     mask_ids = df.pop("mask_id")
 
+    # z-normalize features column-wise to account for different scales
+    df = (df - df.mean()) / df.std()
+
+    # save each row as numpy array
     with tqdm(total=len(mask_ids)) as pbar:
         for i, mask_id in enumerate(mask_ids):
             row = df.iloc[i].to_numpy().reshape(1, -1)
