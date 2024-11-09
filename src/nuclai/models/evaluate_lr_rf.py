@@ -56,7 +56,7 @@ def main():
     args = args_parse()
     path_data = args.data
     path_model = args.model
-    path_out = args.out
+    path_out = args.output_base_dir
 
     # create output directory
     os.makedirs(path_out, exist_ok=True)
