@@ -38,14 +38,14 @@ def args_parse():
     parser.add_argument(
         "--image",
         type=str,
-        default=r"N:\schroeder\Data\DS\PhD\nucleus_classification\raw_data\3D\240930_DAPI_GATA1_PU1_LAMININ_SCA1_LY6G\subset\c0_80-130_3940-6672_4100-6661.tif",
+        default=r"N:\schroeder\Data\DS\PhD\nucleus_classification\raw_data\3D\Alphacat_rep2\stacked\subset\c0_0-55_1950-4500_11550-14862.tif",
         help=("Path to nucleus image."),
     )
 
     parser.add_argument(
         "--mask",
         type=str,
-        default=r"N:\schroeder\Data\DS\PhD\nucleus_classification\data\3d\images\segmentation\mouse\dapi_gata1_pu1_laminin_sca1_ly6g\240930\4_label_assignment\240930_DAPI_C0_curated.tif",
+        default=r"N:\schroeder\Data\DS\PhD\nucleus_classification\data\3d\images_and_features\segmentation\mouse\cd41\acat_rep2\subset\5_curated_filtered\c0_0-55_1950-4500_11550-14862_cp_masks_comb.tif",
         help=("Path to segmentation mask"),
     )
 
@@ -60,7 +60,7 @@ def args_parse():
     parser.add_argument(
         "--out",
         type=str,
-        default=r"N:\schroeder\Data\DS\PhD\nucleus_classification\data\3d\images\segmentation\mouse\dapi_gata1_pu1_laminin_sca1_ly6g\240930\4_label_assignment",
+        default=r"N:\schroeder\Data\DS\PhD\nucleus_classification\data\3d\images_and_features\segmentation\mouse\cd41\acat_rep2\subset\7_classic_features",
         help="Path to output directory.",
     )
 
