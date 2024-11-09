@@ -66,7 +66,7 @@ def main():
         data = json.load(f)
 
     # compile training data
-    tmp = np.load(data[0]["path"])
+    tmp = np.load(data["0"]["path"])
     data_test = np.zeros((len(data), tmp.shape[1]))
     labels_test = np.zeros(len(data))
     ids = []

@@ -59,7 +59,7 @@ def main():
         data = json.load(f)
 
     # compile training data
-    tmp = np.load(data[0]["path"])
+    tmp = np.load(data["0"]["path"])
     data_train = np.zeros((len(data), tmp.shape[1]))
     labels_train = np.zeros(len(data))
 
