@@ -9,7 +9,6 @@ import os
 import joblib
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import ParameterGrid
 
 
@@ -69,12 +68,12 @@ def main():
         labels_train[i] = data[k]["label"]
 
     # Define hyperparameter grid for Logistic Regression
-    param_grid_lr = {
-        "penalty": ["l1", "l2"],
-        "C": [0.1, 1, 10, 100],
-        "class_weight": [None, "balanced"],
-        "solver": ["saga"],
-    }
+    # param_grid_lr = {
+    #     "penalty": ["l1", "l2"],
+    #     "C": [0.1, 1, 10, 100],
+    #     "class_weight": [None, "balanced"],
+    #     "solver": ["saga"],
+    # }
 
     # Define hyperparameter grid for Random Forest
     param_grid_rf = {
@@ -83,27 +82,27 @@ def main():
         "class_weight": [None, "balanced"],
     }
 
-    # Train and save Logistic Regression models
-    print("Training Logistic Regression models...")
-    grid_lr = ParameterGrid(param_grid_lr)
-    for params in grid_lr:
-        try:
-            lr = LogisticRegression(max_iter=10000, n_jobs=-1, **params)
-            lr.fit(data_train, labels_train)
-            # Save the model
-            penalty = params["penalty"]
-            C = params["C"]
-            class_weight = (
-                "imbalanced" if params["class_weight"] is None else "balanced"
-            )
-            model_filename = f"lr_{penalty}_{C}_{class_weight}.joblib"
-            joblib.dump(lr, os.path.join(path_out, model_filename))
-            print(f"Saved Logistic Regression model with parameters: {params}")
-        except Exception as e:  # noqa BLE001
-            print(
-                f"Failed to train Logistic Regression model with parameters: {params}"
-            )
-            print(f"Error: {e}")
+    # Train and save Logistic Regression models (commented out because it takes too long)
+    # print("Training Logistic Regression models...")
+    # grid_lr = ParameterGrid(param_grid_lr)
+    # for params in grid_lr:
+    #     try:
+    #         lr = LogisticRegression(max_iter=10000, n_jobs=-1, **params)
+    #         lr.fit(data_train, labels_train)
+    #         # Save the model
+    #         penalty = params["penalty"]
+    #         C = params["C"]
+    #         class_weight = (
+    #             "imbalanced" if params["class_weight"] is None else "balanced"
+    #         )
+    #         model_filename = f"lr_{penalty}_{C}_{class_weight}.joblib"
+    #         joblib.dump(lr, os.path.join(path_out, model_filename))
+    #         print(f"Saved Logistic Regression model with parameters: {params}")
+    #     except Exception as e:  # noqa BLE001
+    #         print(
+    #             f"Failed to train Logistic Regression model with parameters: {params}"
+    #         )
+    #         print(f"Error: {e}")
 
     # Train and save Random Forest models
     print("\nTraining Random Forest models...")
