@@ -88,7 +88,7 @@ def main():
     grid_lr = ParameterGrid(param_grid_lr)
     for params in grid_lr:
         try:
-            lr = LogisticRegression(max_iter=10000, **params)
+            lr = LogisticRegression(max_iter=10000, n_jobs=-1, **params)
             lr.fit(data_train, labels_train)
             # Save the model
             penalty = params["penalty"]
@@ -110,7 +110,7 @@ def main():
     grid_rf = ParameterGrid(param_grid_rf)
     for params in grid_rf:
         try:
-            rf = RandomForestClassifier(**params)
+            rf = RandomForestClassifier(n_jobs=-1, **params)
             rf.fit(data_train, labels_train)
             # Save the model
             n_estimators = params["n_estimators"]
