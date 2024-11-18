@@ -85,6 +85,13 @@ def _get_args(mode: str) -> argparse.Namespace:
         )
 
         parser.add_argument(
+            "--dropout",
+            type=float,
+            default=0.1,
+            help="Dropout used during training. Default is 0.1.",
+        )
+
+        parser.add_argument(
             "--shape",
             type=int,
             nargs="+",
@@ -238,6 +245,7 @@ def train():
     epochs = args.epochs
     batch_size = args.batch_size
     lr = args.lr
+    dropout = args.dropout
     shape = args.shape
     log_frequency = args.log_frequency
     multiprocessing = args.multiprocessing
@@ -272,6 +280,10 @@ def train():
     assert (
         isinstance(lr, float) and lr > 0
     ), "Learning rate must be a positive float."
+
+    assert (
+        isinstance(dropout, float) and dropout >= 0 and dropout < 1
+    ), "Dropout must be a float in range [0, 1)."
 
     assert (
         isinstance(shape, list) and len(shape) == 3
@@ -383,7 +395,7 @@ def train():
             commitment_cost=0.25,
             decay=0.5,
             epsilon=1e-5,
-            dropout=0.0,
+            dropout=dropout,
             ddp_sync=True,
             use_checkpointing=False,
             shape=shape,
