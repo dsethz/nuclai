@@ -25,6 +25,21 @@ def _threshold_at_zero(x: torch.Tensor) -> torch.Tensor:
     return x > 0
 
 
+def _min_max_normalize(img: torch.Tensor) -> torch.Tensor:
+    """
+    Normalize the image to [0, 1].
+
+    Args:
+        img: torch.Tensor
+            Image tensor of shape (C, D, H, W).
+
+    Returns:
+        torch.Tensor
+            Normalized image tensor of shape (C, D, H, W).
+    """
+    return (img - img.min()) / (img.max() - img.min())
+
+
 def crop_original(img: MetaTensor, mask: MetaTensor) -> MetaTensor:
     """
     Crop the original image to the bounding box defined by the mask.
@@ -54,6 +69,7 @@ def crop_original(img: MetaTensor, mask: MetaTensor) -> MetaTensor:
 def save_image_mod(
     img: torch.Tensor,
     fp: Union[str, pathlib.Path, BinaryIO],
+    znorm: bool = False,
 ) -> None:
     """
     torchvision.utils.save_image modified to save gray_scale images.
@@ -63,6 +79,8 @@ def save_image_mod(
             Image to be saved.
         fp: string or file object
             A filename or a file object.
+        znorm: bool
+            If True, normalize the image to [0, 1] before saving.
     """
     assert len(img.shape) in (
         4,
@@ -73,6 +91,10 @@ def save_image_mod(
         img[0, :, :, :, :]
 
     n_channels = img.size()[0]
+
+    # normalize to [0, 1]
+    if znorm:
+        img = _min_max_normalize(img)
 
     # Add 0.5 after unnormalizing to [0, 255] to round to nearest integer --> modified to obtain grayscale image
     if n_channels == 1:

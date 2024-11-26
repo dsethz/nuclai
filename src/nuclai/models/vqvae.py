@@ -299,7 +299,7 @@ class LitVQVAE(L.LightningModule):
         # img_recon = self.trainer.datamodule.data_test.padder.inverse(
         #     imgs_recon[0]
         # )
-        save_image_mod(img=img_recon, fp=path_img)
+        save_image_mod(img=img_recon, fp=path_img, znorm=True)
 
         # save embeddings
         embedding = self.net.encode(imgs)
