@@ -10,11 +10,69 @@
 import pathlib
 from typing import BinaryIO, Union
 
+import numpy as np
 import torch
-from monai.data.meta_tensor import MetaTensor
+from monai.data import MetaTensor
+from monai.data.meta_obj import get_track_meta
 from monai.transforms import CropForegroundd, SpatialPad
-from monai.utils import TraceKeys
+from monai.transforms.croppad.functional import pad_func
+from monai.utils import TraceKeys, convert_to_tensor, fall_back_tuple
 from skimage import io
+
+
+class RandomSpatialPad(SpatialPad):
+    """
+    Randomly pad input along the last n axes given a defined n-dimensional shape.
+
+    Args:
+        spatial_size: Union[int, tuple[int, ...], list[int, ...]]
+            Expected shape of spatial dimensions after padding.
+        **kwargs: Any
+            Additional parameters for parent class.
+
+    TODO:
+    * adapt DataModule to use RandomSpatialPad
+        * add to compose of each data set
+
+    """
+
+    def __init__(
+        self,
+        spatial_size: Union[int, tuple[int, ...], list[int, ...]],
+        **kwargs,
+    ):
+        super().__init__(spatial_size=spatial_size, **kwargs)
+
+    def __call__(self, img: MetaTensor) -> MetaTensor:
+        # get img shape
+        input_spatial_shape = img.shape[1:]  # assume channel first format
+
+        # compute padding
+        pads = self._compute_pad_width(input_spatial_shape)
+
+        # Convert img to metatensor if necessary
+        img = convert_to_tensor(data=img, track_meta=get_track_meta())
+
+        return pad_func(img, pads, self.get_transform_info())
+
+    def _compute_pad_width(self, input_spatial_shape):
+        # validate spatial_size
+        spatial_size = fall_back_tuple(self.spatial_size, input_spatial_shape)
+
+        # compute padding
+        pads = []
+        for dim_size, target_size in zip(
+            input_spatial_shape, spatial_size, strict=False
+        ):
+            total_pad = max(target_size - dim_size, 0)
+            pad_before = np.random.randint(0, total_pad + 1)
+            pad_after = total_pad - pad_before
+            pads.append((pad_before, pad_after))
+
+        # add channel dimension
+        pads = tuple([(0, 0)] + pads)
+
+        return pads
 
 
 def _threshold_at_zero(x: torch.Tensor) -> torch.Tensor:

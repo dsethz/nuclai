@@ -19,7 +19,7 @@ import torch
 from monai import transforms
 from torch.utils.data import DataLoader
 
-from nuclai.utils.utils import _get_mask
+from nuclai.utils.utils import RandomSpatialPad, _get_mask
 
 
 class DataSetCls:
@@ -181,7 +181,6 @@ class DataSet:
         path_data: path to CSV file containing image paths and header "image".
         trans: Compose of transforms to apply to each image.
         shape: shape of the input image.
-        (remove) bit_depth: bit depth of the input image.
     """
 
     def __init__(
@@ -189,7 +188,6 @@ class DataSet:
         path_data: Union[str, pathlib.PosixPath, pathlib.WindowsPath],
         trans: Optional[transforms.Compose] = None,
         shape: tuple[int, ...] = (30, 300, 300),
-        # bit_depth: int = 8,
     ):
         super().__init__()
 
@@ -219,29 +217,16 @@ class DataSet:
             isinstance(i, int) for i in shape
         ), "values of shape should be of type integer."
 
-        # assert isinstance(
-        #     bit_depth, int
-        # ), f'type of bit_depth should be int instead it is of type: "{type(bit_depth)}".'
-
         self.path_data = path_data
         self.data = pd.read_csv(path_data)
         self.shape = shape
         self.trans = trans
-        self.padder = transforms.SpatialPad(self.shape, method="symmetric")
+        self.padder = RandomSpatialPad(self.shape)
+        # self.padder = transforms.SpatialPad(spatial_size=self.shape, method="symmetric")
 
         assert (
             "image" in self.data.columns
         ), 'The input file requires "image" as header.'
-
-        # if bit_depth == 8:
-        #     self.bit_depth = np.uint8
-        # elif bit_depth == 16:
-        #     self.bit_depth = np.int32
-        # else:
-        #     self.bit_depth = np.uint8
-        #     raise Warning(
-        #         f'bit_depth must be in {8, 16}, but is "{bit_depth}". It will be handled as 8bit and may create an integer overflow.'
-        #     )
 
     def __len__(self):
         return len(self.data)
@@ -285,8 +270,6 @@ class DataSet:
             len(img.shape) == 3
         ), f'images are expected to be grayscale and len(img.shape)==3, here it is: "{len(img.shape)}".'
 
-        # img = img.astype(self.bit_depth)
-
         img_t = torch.from_numpy(img).type(torch.FloatTensor)
         img_t = torch.unsqueeze(img_t, 0)
 
@@ -294,7 +277,7 @@ class DataSet:
         if self.trans is not None:
             img_t = self.trans(img_t)
 
-        # TODO: for now apply padding after transformations (see comment in DataModule.setup)
+        # apply padding and get mask
         img_t = self.padder(img_t)
         mask = _get_mask(img=img_t, padder=self.padder)
 
@@ -332,34 +315,12 @@ class DataModule(L.LightningDataModule):
         """
         Instantiate datasets
         """
-
-        # catch image data type
-        # tmp = pd.read_csv(self.path_data)
-        # img = tifffile.imread(tmp.loc[0, "image"])
-
-        # if img.dtype == np.uint8:
-        #     max_intensity = 255.0
-        #     bit_depth = 8
-        # elif img.dtype == np.uint16:
-        #     max_intensity = 65535.0
-        #     bit_depth = 16
-        # else:
-        #     max_intensity = 255.0
-        #     bit_depth = 8
-        #     raise Warning(
-        #         f'Image type "{img.dtype}" is currently not supported and will be converted to "uint8".'
-        #     )
-
         if stage == "fit" or stage is None:
             assert self.path_data_val is not None, "path_data_val is missing."
 
             # instantiate transforms and datasetst
-            # TODO: use translation to not only have centered images (e.g. RandAffine)
             trans = transforms.Compose(
                 [
-                    # transforms.NormalizeIntensity(
-                    #     subtrahend=0, divisor=max_intensity
-                    # ),
                     transforms.NormalizeIntensity(),
                     transforms.RandZoom(keep_size=True),
                     transforms.RandAxisFlip(),
@@ -372,9 +333,6 @@ class DataModule(L.LightningDataModule):
 
             trans_val = transforms.Compose(
                 [
-                    # transforms.NormalizeIntensity(
-                    #     subtrahend=0, divisor=max_intensity
-                    # ),
                     transforms.NormalizeIntensity(),
                 ]
             )
@@ -383,22 +341,17 @@ class DataModule(L.LightningDataModule):
                 self.path_data,
                 trans=trans,
                 shape=self.shape,
-                # bit_depth=bit_depth,
             )
             self.data_val = DataSet(
                 self.path_data_val,
                 trans=trans_val,
                 shape=self.shape,
-                # bit_depth=bit_depth,
             )
 
         if stage == "test" or stage is None:
             # instantiate transforms and datasets
             trans = transforms.Compose(
                 [
-                    # transforms.NormalizeIntensity(
-                    #     subtrahend=0, divisor=max_intensity
-                    # ),
                     transforms.NormalizeIntensity(),
                 ]
             )
@@ -407,16 +360,12 @@ class DataModule(L.LightningDataModule):
                 self.path_data,
                 trans=trans,
                 shape=self.shape,
-                # bit_depth=bit_depth,
             )
 
         if stage == "predict" or stage is None:
             # instantiate transforms and datasets
             trans = transforms.Compose(
                 [
-                    # transforms.NormalizeIntensity(
-                    #     subtrahend=0, divisor=max_intensity
-                    # ),
                     transforms.NormalizeIntensity(),
                 ]
             )
@@ -425,7 +374,6 @@ class DataModule(L.LightningDataModule):
                 self.path_data,
                 trans=trans,
                 shape=self.shape,
-                # bit_depth=bit_depth,
             )
 
     def train_dataloader(self):
